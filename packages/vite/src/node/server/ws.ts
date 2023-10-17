@@ -177,6 +177,8 @@ export function createWebSocketServer(
         error: err,
       })
     })
+
+    // tim: 浏览器接受到这个推送后，控制台就可以看到熟悉的 [vite] connected
     socket.send(JSON.stringify({ type: 'connected' }))
     if (bufferedError) {
       socket.send(JSON.stringify(bufferedError))

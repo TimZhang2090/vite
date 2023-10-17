@@ -67,6 +67,8 @@ export async function handleHMRUpdate(
   const isEnv =
     config.inlineConfig.envFile !== false &&
     getEnvFilesForMode(config.mode).includes(fileName)
+
+  // tim: 配置文件、环境文件修改则自动重启服务
   if (isConfig || isConfigDependency || isEnv) {
     // auto restart server
     debugHmr?.(`[config change] ${colors.dim(shortFile)}`)
@@ -119,6 +121,7 @@ export async function handleHMRUpdate(
   }
 
   if (!hmrContext.modules.length) {
+    // tim: html 文件更新时，将会触发页面的重新加载
     // html file cannot be hot updated
     if (file.endsWith('.html')) {
       config.logger.info(colors.green(`page reload `) + colors.dim(shortFile), {
@@ -141,6 +144,7 @@ export async function handleHMRUpdate(
   updateModules(shortFile, hmrContext.modules, timestamp, server)
 }
 
+// tim: .vue 等文件更新时，都会进入 updateModules 方法，正常情况下只会触发 update，实现热更新，热替换；
 export function updateModules(
   file: string,
   modules: ModuleNode[],

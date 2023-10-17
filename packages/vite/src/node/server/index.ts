@@ -337,16 +337,20 @@ export async function _createServer(
     ...serverConfig.watch,
   })
 
+  // tim: 创建 http 服务
   const middlewares = connect() as Connect.Server
   const httpServer = middlewareMode
     ? null
     : await resolveHttpServer(serverConfig, middlewares, httpsOptions)
+
+  // tim: 创建 ws 服务
   const ws = createWebSocketServer(httpServer, config, httpsOptions)
 
   if (httpServer) {
     setClientErrorHandler(httpServer, config.logger)
   }
 
+  // tim: 文件变动监听
   // eslint-disable-next-line eqeqeq
   const watchEnabled = serverConfig.watch !== null
   const watcher = watchEnabled
@@ -539,6 +543,7 @@ export async function _createServer(
     await onHMRUpdate(file, true)
   }
 
+  // tim: 文件变动触发 HMR
   watcher.on('change', async (file) => {
     file = normalizePath(file)
     // invalidate module graph cache on file change

@@ -46,6 +46,9 @@ const externalTypes = [
   ...KNOWN_ASSET_TYPES,
 ]
 
+// tim: vite 为了用 esbuild 而写的最重要的 esbuild 的插件
+// 参考 esbuild 文档，如何写插件
+// https://esbuild.github.io/plugins/#using-plugins
 export function esbuildDepPlugin(
   qualified: Record<string, string>,
   external: string[],
@@ -54,6 +57,7 @@ export function esbuildDepPlugin(
 ): Plugin {
   const { extensions } = getDepOptimizationConfig(config, ssr)
 
+  // tim: 这些文件不会在esbuild阶段进行处理，所以要提前把它们找出并解析
   // remove optimizable extensions from `externalTypes` list
   const allExternalTypes = extensions
     ? externalTypes.filter((type) => !extensions?.includes('.' + type))

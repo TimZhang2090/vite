@@ -586,6 +586,7 @@ export function runOptimizeDeps(
 
   const start = performance.now()
 
+  // tim: 添加核心插件 esbuildDepPlugin 等
   const preparedRun = prepareEsbuildOptimizerRun(
     resolvedConfig,
     depsInfo,
