@@ -365,6 +365,7 @@ export async function _createServer(
     container.resolveId(url, undefined, { ssr }),
   )
 
+  // tim: Vite 创建了一个插件容器，用于在不同阶段调用所有插件的钩子函数
   const container = await createPluginContainer(config, moduleGraph, watcher)
   const closeHttpServer = createServerCloseFn(httpServer)
 
@@ -375,6 +376,7 @@ export async function _createServer(
     middlewares,
     httpServer,
     watcher,
+    // tim: vite 支持的 rollup 的钩子函数
     pluginContainer: container,
     ws,
     moduleGraph,

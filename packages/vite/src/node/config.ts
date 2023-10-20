@@ -973,6 +973,7 @@ export async function loadConfigFromFile(
   } else if (/\.c[jt]s$/.test(resolvedPath)) {
     isESM = false
   } else {
+    // tim: 如果 package.json 中的 type 属性是 module，则说明配置文件遵循 ESM 规范
     // check package.json for type: "module" and set `isESM` to true
     try {
       const pkg = lookupFile(configRoot, ['package.json'])

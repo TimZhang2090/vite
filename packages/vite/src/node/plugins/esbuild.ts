@@ -67,6 +67,9 @@ type TSConfigJSON = {
 }
 type TSCompilerOptions = NonNullable<TSConfigJSON['compilerOptions']>
 
+// tim: 此函数先是整合 ESbuild 的配置项
+// 然后通过 ESbuild 的transform 方法将 ts 文件编译成 js 文件
+// 最后返回编译后代码以及 sourcemap 相关信息
 export async function transformWithEsbuild(
   code: string,
   filename: string,
@@ -194,6 +197,7 @@ export async function transformWithEsbuild(
   delete resolvedOptions.jsxInject
 
   try {
+    // tim-core: 对 esbuild 编译能力的调用
     const result = await transform(code, resolvedOptions)
     let map: SourceMap
     if (inMap && resolvedOptions.sourcemap) {
@@ -267,8 +271,13 @@ export function esbuildPlugin(config: ResolvedConfig): Plugin {
       // recycle serve to avoid preventing Node self-exit (#6815)
       server = null as any
     },
+    // tim: 假设请求文件是main.ts
+    // 当调用 pluginContainer.transform 时
+    // 其中会调用 esbuildPlugin 中的 transform 钩子函数，去转换代码
     async transform(code, id) {
+      // tim: 匹配 ts、tsx、jsx 文件
       if (filter(id) || filter(cleanUrl(id))) {
+        // tim: 获取编译后文件内容 { code: 编译后代码, map: sourcemap }
         const result = await transformWithEsbuild(code, id, transformOptions)
         if (result.warnings.length) {
           result.warnings.forEach((m) => {
@@ -278,6 +287,8 @@ export function esbuildPlugin(config: ResolvedConfig): Plugin {
         if (jsxInject && jsxExtensionsRE.test(id)) {
           result.code = jsxInject + ';' + result.code
         }
+
+        // tim: 返回编译后结果
         return {
           code: result.code,
           map: result.map,

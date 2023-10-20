@@ -156,7 +156,9 @@ cli
       const server = await createServer({
         root,
         base: options.base,
+        // tim: 环境模式，development | production
         mode: options.mode,
+        // tim: 配置文件目录
         configFile: options.config,
         logLevel: options.logLevel,
         clearScreen: options.clearScreen,

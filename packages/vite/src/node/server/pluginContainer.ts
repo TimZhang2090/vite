@@ -154,6 +154,18 @@ type PluginContext = Omit<
 
 export let parser = acorn.Parser.extend(importAssertions)
 
+// tim: 大体逻辑就是，当 Vite 构建到某一时机的时候，会调用 container 中的函数，函数内遍历并执行所有插件的对应钩子函数
+// 这些钩子的执行时机如下:
+//   在服务器启动时被调用：
+//     options
+//     buildStart
+//   在每个传入模块请求时被调用：
+//     resolveId
+//     load
+//     transform
+//   在服务器关闭时被调用：
+//     buildEnd
+//     closeBundle
 export async function createPluginContainer(
   config: ResolvedConfig,
   moduleGraph?: ModuleGraph,
@@ -643,6 +655,7 @@ export async function createPluginContainer(
 
     getModuleInfo,
 
+    // tim: 在调用 httpServer.listen 方法时触发这个钩子函数
     async buildStart() {
       await handleHookPromise(
         hookParallel(
@@ -748,6 +761,9 @@ export async function createPluginContainer(
       return null
     },
 
+    // tim: 假设请求文件是main.ts
+    // 当调用 pluginContainer.transform 时
+    // 其中会调用 esbuildPlugin 中的 transform 钩子函数，去转换代码
     async transform(code, id, options) {
       const inMap = options?.inMap
       const ssr = options?.ssr
