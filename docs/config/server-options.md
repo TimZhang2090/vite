@@ -174,6 +174,28 @@ The error that appears in the Browser when the fallback happens can be ignored. 
 
 :::
 
+## server.warmup
+
+- **Type:** `{ clientFiles?: string[], ssrFiles?: string[] }`
+- **Related:** [Warm Up Frequently Used Files](/guide/performance.html#warm-up-frequently-used-files)
+
+Warm up files to transform and cache the results in advance. This improves the initial page load during server starts and prevents transform waterfalls.
+
+`clientFiles` are files that are used in the client only, while `ssrFiles` are files that are used in SSR only. They accept an array of file paths or [`fast-glob`](https://github.com/mrmlnc/fast-glob) patterns relative to the `root`.
+
+Make sure to only add files that are frequently used to not overload the Vite dev server on startup.
+
+```js
+export default defineConfig({
+  server: {
+    warmup: {
+      clientFiles: ['./src/components/*.vue', './src/utils/big-utils.js'],
+      ssrFiles: ['./src/server/modules/*.js'],
+    },
+  },
+})
+```
+
 ## server.watch
 
 - **Type:** `object | null`

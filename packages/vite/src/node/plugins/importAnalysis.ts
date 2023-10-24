@@ -225,28 +225,11 @@ export function importAnalysisPlugin(config: ResolvedConfig): Plugin {
       try {
         ;[imports, exports] = parseImports(source)
       } catch (e: any) {
-        const isVue = importer.endsWith('.vue')
-        const isJsx = importer.endsWith('.jsx') || importer.endsWith('.tsx')
-        const maybeJSX = !isVue && isJSRequest(importer)
-
-        const msg = isVue
-          ? `Install @vitejs/plugin-vue to handle .vue files.`
-          : maybeJSX
-          ? isJsx
-            ? `If you use tsconfig.json, make sure to not set jsx to preserve.`
-            : `If you are using JSX, make sure to name the file with the .jsx or .tsx extension.`
-          : `You may need to install appropriate plugins to handle the ${path.extname(
-              importer,
-            )} file format, or if it's an asset, add "**/*${path.extname(
-              importer,
-            )}" to \`assetsInclude\` in your configuration.`
-
-        this.error(
-          `Failed to parse source for import analysis because the content ` +
-            `contains invalid JS syntax. ` +
-            msg,
-          e.idx,
+        const { message, showCodeFrame } = createParseErrorInfo(
+          importer,
+          source,
         )
+        this.error(message, showCodeFrame ? e.idx : undefined)
       }
 
       const depsOptimizer = getDepsOptimizer(config, ssr)
@@ -329,6 +312,10 @@ export function importAnalysisPlugin(config: ResolvedConfig): Plugin {
           )
         }
 
+        if (isExternalUrl(resolved.id)) {
+          return [resolved.id, resolved.id]
+        }
+
         const isRelative = url[0] === '.'
         const isSelfImport = !isRelative && cleanUrl(url) === cleanUrl(importer)
 
@@ -346,10 +333,6 @@ export function importAnalysisPlugin(config: ResolvedConfig): Plugin {
           url = path.posix.join(FS_PREFIX, resolved.id)
         } else {
           url = resolved.id
-        }
-
-        if (isExternalUrl(url)) {
-          return [url, url]
         }
 
         // if the resolved id is not a valid browser import specifier,
@@ -425,7 +408,7 @@ export function importAnalysisPlugin(config: ResolvedConfig): Plugin {
             ss: expStart,
             se: expEnd,
             d: dynamicIndex,
-            a: assertIndex,
+            a: attributeIndex,
           } = importSpecifier
 
           // #2083 User may use escape path,
@@ -481,8 +464,8 @@ export function importAnalysisPlugin(config: ResolvedConfig): Plugin {
 
           const isDynamicImport = dynamicIndex > -1
 
-          // strip import assertions as we can process them ourselves
-          if (!isDynamicImport && assertIndex > -1) {
+          // strip import attributes as we can process them ourselves
+          if (!isDynamicImport && attributeIndex > -1) {
             str().remove(end + 1, expEnd)
           }
 
@@ -643,7 +626,10 @@ export function importAnalysisPlugin(config: ResolvedConfig): Plugin {
                   return
                 }
                 // Unexpected error, log the issue but avoid an unhandled exception
-                config.logger.error(e.message, { error: e })
+                config.logger.error(`Pre-transform error: ${e.message}`, {
+                  error: e,
+                  timestamp: true,
+                })
               })
             }
           } else if (!importer.startsWith(withTrailingSlash(clientDir))) {
@@ -809,6 +795,38 @@ function mergeAcceptedUrls<T>(orderedUrls: Array<Set<T> | undefined>) {
     for (const url of urls) acceptedUrls.add(url)
   }
   return acceptedUrls
+}
+
+export function createParseErrorInfo(
+  importer: string,
+  source: string,
+): { message: string; showCodeFrame: boolean } {
+  const isVue = importer.endsWith('.vue')
+  const isJsx = importer.endsWith('.jsx') || importer.endsWith('.tsx')
+  const maybeJSX = !isVue && isJSRequest(importer)
+  const probablyBinary = source.includes(
+    '\ufffd' /* unicode replacement character */,
+  )
+
+  const msg = isVue
+    ? `Install @vitejs/plugin-vue to handle .vue files.`
+    : maybeJSX
+    ? isJsx
+      ? `If you use tsconfig.json, make sure to not set jsx to preserve.`
+      : `If you are using JSX, make sure to name the file with the .jsx or .tsx extension.`
+    : `You may need to install appropriate plugins to handle the ${path.extname(
+        importer,
+      )} file format, or if it's an asset, add "**/*${path.extname(
+        importer,
+      )}" to \`assetsInclude\` in your configuration.`
+
+  return {
+    message:
+      `Failed to parse source for import analysis because the content ` +
+      `contains invalid JS syntax. ` +
+      msg,
+    showCodeFrame: !probablyBinary,
+  }
 }
 
 export function interopNamedImports(

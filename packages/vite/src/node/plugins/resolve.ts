@@ -26,6 +26,7 @@ import {
   isBuiltin,
   isDataUrl,
   isExternalUrl,
+  isFilePathESM,
   isInNodeModules,
   isNonDriveRelativeAbsolutePath,
   isObject,
@@ -51,6 +52,8 @@ import {
 
 const normalizedClientEntry = normalizePath(CLIENT_ENTRY)
 const normalizedEnvEntry = normalizePath(ENV_ENTRY)
+
+const ERR_RESOLVE_PACKAGE_ENTRY_FAIL = 'ERR_RESOLVE_PACKAGE_ENTRY_FAIL'
 
 // special id for paths marked with browser: false
 // https://github.com/defunctzombie/package-browser-field-spec#ignore-a-module
@@ -642,7 +645,9 @@ function tryCleanFsResolve(
           return resolvePackageEntry(dirPath, pkg, targetWeb, options)
         }
       } catch (e) {
-        if (e.code !== 'ENOENT') throw e
+        // This check is best effort, so if an entry is not found, skip error for now
+        if (e.code !== ERR_RESOLVE_PACKAGE_ENTRY_FAIL && e.code !== 'ENOENT')
+          throw e
       }
     }
 
@@ -822,8 +827,6 @@ export function tryNodeResolve(
     })
   }
 
-  const ext = path.extname(resolved)
-
   if (
     !options.ssrOptimizeCheck &&
     (!isInNodeModules(resolved) || // linked
@@ -859,12 +862,7 @@ export function tryNodeResolve(
     (!options.ssrOptimizeCheck && !isBuild && ssr) ||
     // Only optimize non-external CJS deps during SSR by default
     (ssr &&
-      !(
-        ext === '.cjs' ||
-        (ext === '.js' &&
-          findNearestPackageData(path.dirname(resolved), options.packageCache)
-            ?.data.type !== 'module')
-      ) &&
+      isFilePathESM(resolved, options.packageCache) &&
       !(include?.includes(pkgId) || include?.includes(id)))
 
   if (options.ssrOptimizeCheck) {
@@ -989,17 +987,8 @@ export function resolvePackageEntry(
       )
     }
 
-    const resolvedFromExports = !!entryPoint
-
-    // if exports resolved to .mjs, still resolve other fields.
-    // This is because .mjs files can technically import .cjs files which would
-    // make them invalid for pure ESM environments - so if other module/browser
-    // fields are present, prioritize those instead.
-    if (
-      targetWeb &&
-      options.browserField &&
-      (!entryPoint || entryPoint.endsWith('.mjs'))
-    ) {
+    // handle edge case with browser and module field semantics
+    if (!entryPoint && targetWeb && options.browserField) {
       // check browser field
       // https://github.com/defunctzombie/package-browser-field-spec
       const browserEntry =
@@ -1041,8 +1030,7 @@ export function resolvePackageEntry(
     }
 
     // fallback to mainFields if still not resolved
-    // TODO: review if `.mjs` check is still needed
-    if (!resolvedFromExports && (!entryPoint || entryPoint.endsWith('.mjs'))) {
+    if (!entryPoint) {
       for (const field of options.mainFields) {
         if (field === 'browser') continue // already checked above
         if (typeof data[field] === 'string') {
@@ -1101,11 +1089,13 @@ export function resolvePackageEntry(
 }
 
 function packageEntryFailure(id: string, details?: string) {
-  throw new Error(
+  const err: any = new Error(
     `Failed to resolve entry for package "${id}". ` +
       `The package may have incorrect main/module/exports specified in its package.json` +
       (details ? ': ' + details : '.'),
   )
+  err.code = ERR_RESOLVE_PACKAGE_ENTRY_FAIL
+  throw err
 }
 
 function resolveExportsOrImports(
