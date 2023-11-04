@@ -186,6 +186,7 @@ async function computeEntries(config: ResolvedConfig) {
       throw new Error('invalid rollupOptions.input value.')
     }
   } else {
+    // tim 用户未指定入口，将 html 文件作为入口
     entries = await globEntries('**/*.html', config)
   }
 
