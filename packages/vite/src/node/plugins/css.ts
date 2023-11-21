@@ -70,6 +70,7 @@ import {
   renderAssetUrlInJS,
 } from './asset'
 import type { ESBuildOptions } from './esbuild'
+import { getChunkOriginalFileName } from './manifest'
 
 // const debug = createDebugger('vite:css')
 
@@ -114,6 +115,7 @@ export interface CSSModulesOptions {
   ) => void
   scopeBehaviour?: 'global' | 'local'
   globalModulePaths?: RegExp[]
+  exportGlobals?: boolean
   generateScopedName?:
     | string
     | ((name: string, filename: string, css: string) => string)
@@ -141,20 +143,19 @@ export type ResolvedCSSOptions = Omit<CSSOptions, 'lightningcss'> & {
 
 export function resolveCSSOptions(
   options: CSSOptions | undefined,
-): ResolvedCSSOptions | undefined {
-  if (options?.lightningcss) {
+): ResolvedCSSOptions {
+  if (options?.transformer === 'lightningcss') {
     return {
       ...options,
       lightningcss: {
         ...options.lightningcss,
         targets:
-          options.lightningcss.targets ??
+          options.lightningcss?.targets ??
           convertTargets(ESBUILD_MODULES_TARGET),
       },
     }
   }
-  // TS doesn't narrow the type with the previous if :/
-  return options as Omit<CSSOptions, 'lightningcss'>
+  return { ...options, lightningcss: undefined }
 }
 
 const cssModuleRE = new RegExp(`\\.module${CSS_LANGS_RE.source}`)
@@ -605,20 +606,19 @@ export function cssPostPlugin(config: ResolvedConfig): Plugin {
       }
 
       if (config.build.cssCodeSplit) {
-        if (isPureCssChunk) {
-          // this is a shared CSS-only chunk that is empty.
-          pureCssChunks.add(chunk)
-        }
         if (opts.format === 'es' || opts.format === 'cjs') {
-          const isEntry = chunk.isEntry && isPureCssChunk
-          const cssAssetName = normalizePath(
-            !isEntry && chunk.facadeModuleId
-              ? path.relative(config.root, chunk.facadeModuleId)
-              : chunk.name,
-          )
+          if (isPureCssChunk) {
+            // this is a shared CSS-only chunk that is empty.
+            pureCssChunks.add(chunk)
+          }
 
-          const lang = path.extname(cssAssetName).slice(1)
-          const cssFileName = ensureFileExt(cssAssetName, '.css')
+          const isEntry = chunk.isEntry && isPureCssChunk
+          const cssAssetName = ensureFileExt(chunk.name, '.css')
+          const originalFilename = getChunkOriginalFileName(
+            chunk,
+            config.root,
+            opts.format,
+          )
 
           chunkCSS = resolveAssetUrlsInCss(chunkCSS, cssAssetName)
 
@@ -640,14 +640,13 @@ export function cssPostPlugin(config: ResolvedConfig): Plugin {
 
           // emit corresponding css file
           const referenceId = this.emitFile({
-            name: path.basename(cssFileName),
+            name: cssAssetName,
             type: 'asset',
             source: chunkCSS,
           })
-          const originalName = isPreProcessor(lang) ? cssAssetName : cssFileName
           generatedAssets
             .get(config)!
-            .set(referenceId, { originalName, isEntry })
+            .set(referenceId, { originalName: originalFilename, isEntry })
           chunk.viteMetadata!.importedCss.add(this.getFileName(referenceId))
 
           if (emitTasksLength === emitTasks.length) {
@@ -1188,13 +1187,21 @@ async function compileCSS(
           deps.add(files[i])
         }
       } else if (message.type === 'warning') {
-        let msg = `[vite:css] ${message.text}`
-        if (message.line && message.column) {
-          msg += `\n${generateCodeFrame(code, {
-            line: message.line,
-            column: message.column,
-          })}`
-        }
+        const warning = message as PostCSS.Warning
+        let msg = `[vite:css] ${warning.text}`
+        msg += `\n${generateCodeFrame(
+          code,
+          {
+            line: warning.line,
+            column: warning.column - 1, // 1-based
+          },
+          warning.endLine !== undefined && warning.endColumn !== undefined
+            ? {
+                line: warning.endLine,
+                column: warning.endColumn - 1, // 1-based
+              }
+            : undefined,
+        )}`
         config.logger.warn(colors.yellow(msg))
       }
     }
@@ -1202,8 +1209,9 @@ async function compileCSS(
     e.message = `[postcss] ${e.message}`
     e.code = code
     e.loc = {
-      column: e.column,
+      file: e.file,
       line: e.line,
+      column: e.column - 1, // 1-based
     }
     throw e
   }
@@ -2273,7 +2281,10 @@ async function compileLightningCSS(
           },
         },
         minify: config.isProduction && !!config.build.cssMinify,
-        sourceMap: config.css?.devSourcemap,
+        sourceMap:
+          config.command === 'build'
+            ? !!config.build.sourcemap
+            : config.css?.devSourcemap,
         analyzeDependencies: true,
         cssModules: cssModuleRE.test(id)
           ? config.css?.lightningcss?.cssModules ?? true

@@ -15,6 +15,8 @@ Vite is now using Rollup 4 which also brings along its breaking changes, in part
 
 Read the full breaking changes in [Rollup's release notes](https://github.com/rollup/rollup/releases/tag/v4.0.0) for build-related changes in [`build.rollupOptions`](/config/build-options.md#build-rollupoptions).
 
+If you are using TypeScript, make sure to set `moduleResolution: 'bundler'` (or `node16`/`nodenext`) as Rollup 4 requires it. Or you can set `skipLibCheck: true` instead.
+
 ## Deprecate CJS Node API
 
 The CJS Node API of Vite is deprecated. When calling `require('vite')`, a deprecation warning is now logged. You should update your files or frameworks to import the ESM build of Vite instead.
@@ -22,7 +24,7 @@ The CJS Node API of Vite is deprecated. When calling `require('vite')`, a deprec
 In a basic Vite project, make sure:
 
 1. The `vite.config.js` file content is using the ESM syntax.
-2. The closest `package.json` file has `"type": "module"`, or use the `.mjs` extension, e.g. `vite.config.mjs`.
+2. The closest `package.json` file has `"type": "module"`, or use the `.mjs`/`.mts` extension, e.g. `vite.config.mjs` or `vite.config.mts`.
 
 For other projects, there are a few general approaches:
 
@@ -120,7 +122,7 @@ In Vite 4, the dev and preview servers serve HTML based on its directory structu
 | Request           | Before (dev)                 | Before (preview)  | After (dev & preview)        |
 | ----------------- | ---------------------------- | ----------------- | ---------------------------- |
 | `/dir/index.html` | `/dir/index.html`            | `/dir/index.html` | `/dir/index.html`            |
-| `/dir`            | `/index.html` (SPA fallback) | `/dir/index.html` | `/dir.html` (SPA fallback)   |
+| `/dir`            | `/index.html` (SPA fallback) | `/dir/index.html` | `/index.html` (SPA fallback) |
 | `/dir/`           | `/dir/index.html`            | `/dir/index.html` | `/dir/index.html`            |
 | `/file.html`      | `/file.html`                 | `/file.html`      | `/file.html`                 |
 | `/file`           | `/index.html` (SPA fallback) | `/file.html`      | `/file.html`                 |
@@ -128,7 +130,9 @@ In Vite 4, the dev and preview servers serve HTML based on its directory structu
 
 ### Manifest files are now generated in `.vite` directory by default
 
-In Vite 4, the manifest files ([`build.manifest`](/config/build-options.md#build-manifest), [`build.ssrManifest`](/config/build-options.md#build-ssrmanifest)) was generated in the root of [`build.outDir`](/config/build-options.md#build-outdir) by default. From Vite 5, those will be generated in the `.vite` directory in the `build.outDir` by default.
+In Vite 4, the manifest files ([`build.manifest`](/config/build-options.md#build-manifest) and [`build.ssrManifest`](/config/build-options.md#build-ssrmanifest)) were generated in the root of [`build.outDir`](/config/build-options.md#build-outdir) by default.
+
+From Vite 5, they will be generated in the `.vite` directory in the `build.outDir` by default. This change helps deconflict public files with the same manifest file names when they are copied to the `build.outDir`.
 
 ### CLI shortcuts require an additional `Enter` press
 
@@ -163,8 +167,9 @@ Vite 5 uses esbuild 0.19 and removes the compatibility layer for esbuild 0.18, w
 
 ### Remove `--https` flag and `https: true`
 
-`--https` flag sets `https: true`. This config was meant to be used together with the automatic https certification generation feature which [was dropped in Vite 3](https://v3.vitejs.dev/guide/migration.html#automatic-https-certificate-generation). This config no longer makes sense as it will make Vite start a HTTPS server without a certificate.
-Both [`@vitejs/plugin-basic-ssl`](https://github.com/vitejs/vite-plugin-basic-ssl) and [`vite-plugin-mkcert`](https://github.com/liuweiGL/vite-plugin-mkcert) sets `https` setting regardless of the `https` value, so you can just remove `--https` and `https: true`.
+The `--https` flag sets `server.https: true` and `preview.https: true` internally. This config was meant to be used together with the automatic https certification generation feature which [was dropped in Vite 3](https://v3.vitejs.dev/guide/migration.html#automatic-https-certificate-generation). Hence, this config is no longer useful as it will start a Vite HTTPS server without a certificate.
+
+If you use [`@vitejs/plugin-basic-ssl`](https://github.com/vitejs/vite-plugin-basic-ssl) or [`vite-plugin-mkcert`](https://github.com/liuweiGL/vite-plugin-mkcert), they will already set the `https` config internally, so you can remove `--https`, `server.https: true`, and `preview.https: true` in your setup.
 
 ### Remove `resolvePackageEntry` and `resolvePackageData` APIs
 
@@ -204,6 +209,8 @@ There are some changes which only affect plugin/tool creators.
   - The `configurePreviewServer` hook now accepts the `PreviewServer` type instead of `PreviewServerForHook` type.
 - [[#14818] refactor(preview)!: use base middleware](https://github.com/vitejs/vite/pull/14818)
   - Middlewares added from the returned function in `configurePreviewServer` now does not have access to the `base` when comparing the `req.url` value. This aligns the behaviour with the dev server. You can check the `base` from the `configResolved` hook if needed.
+- [[#14834] fix(types)!: expose httpServer with Http2SecureServer union](https://github.com/vitejs/vite/pull/14834)
+  - `http.Server | http2.Http2SecureServer` is now used instead of `http.Server` where appropriate.
 
 Also there are other breaking changes which only affect few users.
 
@@ -221,6 +228,8 @@ Also there are other breaking changes which only affect few users.
   - In the past, when a library `"exports"` field maps to an `.mjs` file, Vite will still try to match the `"browser"` and `"module"` fields to fix compatibility with certain libraries. This behavior is now removed to align with the exports resolution algorithm.
 - [[#14733] feat(resolve)!: remove `resolve.browserField`](https://github.com/vitejs/vite/pull/14733)
   - `resolve.browserField` has been deprecated since Vite 3 in favour of an updated default of `['browser', 'module', 'jsnext:main', 'jsnext']` for [`resolve.mainFields`](/config/shared-options.md#resolve-mainfields).
+- [[#14855] feat!: add isPreview to ConfigEnv and resolveConfig](https://github.com/vitejs/vite/pull/14855)
+  - Renamed `ssrBuild` to `isSsrBuild` in the `ConfigEnv` object.
 
 ## Migration from v3
 

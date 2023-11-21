@@ -500,6 +500,19 @@ export async function build(
         `Please specify a dedicated SSR entry.`,
     )
   }
+  if (config.build.cssCodeSplit === false) {
+    const inputs =
+      typeof input === 'string'
+        ? [input]
+        : Array.isArray(input)
+        ? input
+        : Object.values(input)
+    if (inputs.some((input) => input.endsWith('.css'))) {
+      throw new Error(
+        `When "build.cssCodeSplit: false" is set, "rollupOptions.input" should not include CSS files.`,
+      )
+    }
+  }
 
   const outDir = resolve(options.outDir)
 
@@ -538,6 +551,7 @@ export async function build(
     if (e.frame) {
       msg += `\n` + colors.yellow(e.frame)
     }
+    clearLine()
     config.logger.error(msg, { error: e })
   }
 
@@ -550,6 +564,20 @@ export async function build(
           `You've set "rollupOptions.output.output" in your config. ` +
             `This is deprecated and will override all Vite.js default output options. ` +
             `Please use "rollupOptions.output" instead.`,
+        )
+      }
+      if (output.file) {
+        throw new Error(
+          `Vite does not support "rollupOptions.output.file". ` +
+            `Please use "rollupOptions.output.dir" and "rollupOptions.output.entryFileNames" instead.`,
+        )
+      }
+      if (output.sourcemap) {
+        config.logger.warnOnce(
+          colors.yellow(
+            `Vite does not support "rollupOptions.output.sourcemap". ` +
+              `Please use "build.sourcemap" instead.`,
+          ),
         )
       }
 
@@ -855,6 +883,14 @@ const dynamicImportWarningIgnoreList = [
   `statically analyzed`,
 ]
 
+function clearLine() {
+  const tty = process.stdout.isTTY && !process.env.CI
+  if (tty) {
+    process.stdout.clearLine(0)
+    process.stdout.cursorTo(0)
+  }
+}
+
 export function onRollupWarning(
   warning: RollupLog,
   warn: LoggingFunction,
@@ -911,11 +947,7 @@ export function onRollupWarning(
     warn(warnLog)
   }
 
-  const tty = process.stdout.isTTY && !process.env.CI
-  if (tty) {
-    process.stdout.clearLine(0)
-    process.stdout.cursorTo(0)
-  }
+  clearLine()
   const userOnWarn = config.build.rollupOptions?.onwarn
   if (userOnWarn) {
     userOnWarn(warning, viteWarn)

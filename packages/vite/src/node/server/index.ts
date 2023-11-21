@@ -1,6 +1,7 @@
 import path from 'node:path'
 import type * as net from 'node:net'
 import { get as httpGet } from 'node:http'
+import { get as httpsGet } from 'node:https'
 import type * as http from 'node:http'
 import { performance } from 'node:perf_hooks'
 import type { Http2SecureServer } from 'node:http2'
@@ -15,7 +16,6 @@ import type { SourceMap } from 'rollup'
 import picomatch from 'picomatch'
 import type { Matcher } from 'picomatch'
 import type { InvalidatePayload } from 'types/customEvent'
-import { ASYNC_DISPOSE, CLIENT_DIR, DEFAULT_DEV_PORT } from '../constants'
 import type { CommonServerOptions } from '../http'
 import {
   httpServerStart,
@@ -28,6 +28,7 @@ import { isDepsOptimizerEnabled, resolveConfig } from '../config'
 import {
   diffDnsOrderChange,
   isInNodeModules,
+  isObject,
   isParentDirectory,
   mergeConfig,
   normalizePath,
@@ -45,6 +46,7 @@ import {
 } from '../optimizer'
 import { bindCLIShortcuts } from '../shortcuts'
 import type { BindCLIShortcutsOptions } from '../shortcuts'
+import { CLIENT_DIR, DEFAULT_DEV_PORT } from '../constants'
 import type { Logger } from '../logger'
 import { printServerUrls } from '../logger'
 import { createNoopWatcher, resolveChokidarOptions } from '../watch'
@@ -111,7 +113,16 @@ export interface ServerOptions extends CommonServerOptions {
    * Create Vite dev server to be used as a middleware in an existing server
    * @default false
    */
-  middlewareMode?: boolean
+  middlewareMode?:
+    | boolean
+    | {
+        /**
+         * Parent server instance to attach to
+         *
+         * This is needed to proxy WebSocket connections to the parent server.
+         */
+        server: http.Server
+      }
   /**
    * Options for files served via '/\@fs/'.
    */
@@ -185,7 +196,7 @@ export type ServerHook = (
 
 export type HttpServer = http.Server | Http2SecureServer
 
-export interface ViteDevServer extends AsyncDisposable {
+export interface ViteDevServer {
   /**
    * The resolved vite config object
    */
@@ -308,6 +319,10 @@ export interface ViteDevServer extends AsyncDisposable {
   /**
    * @internal
    */
+  _setInternalServer(server: ViteDevServer): void
+  /**
+   * @internal
+   */
   _importGlobMap: Map<string, { affirmed: string[]; negated: string[] }[]>
   /**
    * @internal
@@ -336,6 +351,14 @@ export interface ViteDevServer extends AsyncDisposable {
    * @internal
    */
   _shortcutsOptions?: BindCLIShortcutsOptions<ViteDevServer>
+  /**
+   * @internal
+   */
+  _currentServerPort?: number | undefined
+  /**
+   * @internal
+   */
+  _configServerPort?: number | undefined
 }
 
 export interface ResolvedServerUrls {
@@ -398,7 +421,9 @@ export async function _createServer(
 
   let exitProcess: () => void
 
-  const server: ViteDevServer = {
+  const devHtmlTransformFn = createDevHtmlTransformFn(config)
+
+  let server: ViteDevServer = {
     config,
     middlewares,
     httpServer,
@@ -435,7 +460,9 @@ export async function _createServer(
         })
       })
     },
-    transformIndexHtml: null!, // to be immediately set
+    transformIndexHtml(url, html, originalUrl) {
+      return devHtmlTransformFn(server, url, html, originalUrl)
+    },
     async ssrLoadModule(url, opts?: { fixStacktrace?: boolean }) {
       if (isDepsOptimizerEnabled(config, true)) {
         await initDevSsrDepsOptimizer(config, server)
@@ -487,7 +514,9 @@ export async function _createServer(
         // preTransformRequests needs to be enabled for this optimization.
         if (server.config.server.preTransformRequests) {
           setTimeout(() => {
-            httpGet(
+            const getMethod = path.startsWith('https:') ? httpsGet : httpGet
+
+            getMethod(
               path,
               {
                 headers: {
@@ -544,9 +573,6 @@ export async function _createServer(
       }
       server.resolvedUrls = null
     },
-    [ASYNC_DISPOSE]() {
-      return this.close()
-    },
     printUrls() {
       if (server.resolvedUrls) {
         printServerUrls(
@@ -576,6 +602,11 @@ export async function _createServer(
       return server._restartPromise
     },
 
+    _setInternalServer(_server: ViteDevServer) {
+      // Rebind internal the server variable so functions reference the user
+      // server instance after a restart
+      server = _server
+    },
     _restartPromise: null,
     _importGlobMap: new Map(),
     _forceOptimizeOnRestart: false,
@@ -583,8 +614,6 @@ export async function _createServer(
     _fsDenyGlob: picomatch(config.server.fs.deny, { matchBase: true }),
     _shortcutsOptions: undefined,
   }
-
-  server.transformIndexHtml = createDevHtmlTransformFn(server)
 
   if (!middlewareMode) {
     exitProcess = async () => {
@@ -682,7 +711,11 @@ export async function _createServer(
   // proxy
   const { proxy } = serverConfig
   if (proxy) {
-    middlewares.use(proxyMiddleware(httpServer, proxy, config))
+    const middlewareServer =
+      (isObject(serverConfig.middlewareMode)
+        ? serverConfig.middlewareMode.server
+        : null) || httpServer
+    middlewares.use(proxyMiddleware(middlewareServer, proxy, config))
   }
 
   // base
@@ -707,9 +740,7 @@ export async function _createServer(
   // this applies before the transform middleware so that these files are served
   // as-is without transforms.
   if (config.publicDir) {
-    middlewares.use(
-      servePublicMiddleware(config.publicDir, config.server.headers),
-    )
+    middlewares.use(servePublicMiddleware(server))
   }
 
   // main transform middleware
@@ -717,7 +748,7 @@ export async function _createServer(
 
   // serve static files
   middlewares.use(serveRawFsMiddleware(server))
-  middlewares.use(serveStaticMiddleware(root, server))
+  middlewares.use(serveStaticMiddleware(server))
 
   // html fallback
   if (config.appType === 'spa' || config.appType === 'mpa') {
@@ -796,15 +827,24 @@ async function startServer(
   }
 
   const options = server.config.server
-  const port = inlinePort ?? options.port ?? DEFAULT_DEV_PORT
   const hostname = await resolveHostname(options.host)
+  const configPort = inlinePort ?? options.port
+  // When using non strict port for the dev server, the running port can be different from the config one.
+  // When restarting, the original port may be available but to avoid a switch of URL for the running
+  // browser tabs, we enforce the previously used port, expect if the config port changed.
+  const port =
+    (!configPort || configPort === server._configServerPort
+      ? server._currentServerPort
+      : configPort) ?? DEFAULT_DEV_PORT
+  server._configServerPort = configPort
 
-  await httpServerStart(httpServer, {
+  const serverPort = await httpServerStart(httpServer, {
     port,
     strictPort: options.strictPort,
     host: hostname.host,
     logger: server.config.logger,
   })
+  server._currentServerPort = serverPort
 }
 
 function createServerCloseFn(server: HttpServer | null) {
@@ -924,7 +964,11 @@ async function restartServer(server: ViteDevServer) {
   await server.close()
 
   // Assign new server props to existing server instance
+  newServer._configServerPort = server._configServerPort
+  newServer._currentServerPort = server._currentServerPort
   Object.assign(server, newServer)
+  // Rebind internal server variable so functions reference the user server
+  newServer._setInternalServer(server)
 
   const {
     logger,

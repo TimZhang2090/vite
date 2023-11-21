@@ -33,6 +33,8 @@ document.querySelector('.mxd').addEventListener('click', async () => {
 
 document.querySelector('.mxd2').addEventListener('click', async () => {
   const test = { jss: '../files/mxd.js' }
+  const ttest = test
+  const view = 'mxd'
   const { default: mxdDynamic } = await import(/*@vite-ignore*/ test.jss)
   text('.view', mxdStatic === mxdDynamic)
 })
@@ -85,6 +87,11 @@ import(`../alias/${base}.js`).then((mod) => {
 import(/*@vite-ignore*/ `https://localhost`).catch((mod) => {
   console.log(mod)
   text('.dynamic-import-with-vars-ignored', 'hello')
+})
+
+import(/*@vite-ignore*/ `https://localhost//${'test'}`).catch((mod) => {
+  console.log(mod)
+  text('.dynamic-import-with-double-slash-ignored', 'hello')
 })
 
 // prettier-ignore
