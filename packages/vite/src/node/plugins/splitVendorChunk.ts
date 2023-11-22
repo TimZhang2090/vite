@@ -40,10 +40,13 @@ export function splitVendorChunk(
   options: { cache?: SplitVendorChunkCache } = {},
 ): GetManualChunk {
   const cache = options.cache ?? new SplitVendorChunkCache()
+  // tim manualChunks 配置项接受的配置函数
+  // 来自 node_modules 的，非样式的，又在初始 Chunk 中的，会被 分到 'vendor' 这个 Chunk
   return (id, { getModuleInfo }) => {
     if (
       isInNodeModules(id) &&
       !isCSSRequest(id) &&
+      // tim 判断是否为 Initial Chunk，初始 Chunk
       staticImportedByEntry(id, getModuleInfo, cache.cache)
     ) {
       return 'vendor'
