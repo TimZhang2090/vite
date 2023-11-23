@@ -352,12 +352,15 @@ function viteLegacyPlugin(options: Options = {}): Plugin[] {
         }
       }
 
+      // tim 调整了 output 属性
       const createLegacyOutput = (
         options: OutputOptions = {},
       ): OutputOptions => {
         return {
           ...options,
+          // tim system 格式产物
           format: 'system',
+          // tim 转换效果: index.[hash].js -> index-legacy.[hash].js
           entryFileNames: getLegacyOutputFileName(options.entryFileNames),
           chunkFileNames: getLegacyOutputFileName(options.chunkFileNames),
         }
@@ -379,6 +382,13 @@ function viteLegacyPlugin(options: Options = {}): Plugin[] {
     },
 
     async renderChunk(raw, chunk, opts) {
+      // 在 renderChunk 阶段，插件会对 Legacy 模式产物进行语法转译和 Polyfill 收集
+      // 值得注意的是，这里并不会真正注入 Polyfill ，而仅仅只是收集 Polyfill
+      // 1. 使用 babel + @babel/preset-env 进行语法转换与 Polyfill 注入
+      // 2. 由于此时已经打包后的 Chunk 已经生成
+      // 这里需要去掉 babel 注入的 import 语句，并记录所需的 Polyfill
+      // 3. 最后的 Polyfill 代码将会在 generateBundle 阶段生成
+
       if (config.build.ssr) {
         return null
       }
@@ -479,6 +489,9 @@ function viteLegacyPlugin(options: Options = {}): Plugin[] {
     },
 
     transformIndexHtml(html, { chunk }) {
+      // 1. 插入 Polyfill chunk 对应的 <script nomodule> 标签
+      // 2. 插入 Legacy 产物入口文件对应的 <script nomodule> 标签
+
       if (config.build.ssr) return
       if (!chunk) return
       if (chunk.fileName.includes('-legacy')) {
@@ -684,6 +697,7 @@ function createBabelPresetEnvOptions(
   }
 }
 
+// Vite 会对之前收集到的 Polyfill 进行统一的打包
 async function buildPolyfillChunk(
   mode: string,
   imports: Set<string>,
@@ -792,6 +806,7 @@ function isLegacyBundle(
   return false
 }
 
+// tim 收集并移除 babel 注入的 import 语句
 function recordAndRemovePolyfillBabelPlugin(
   polyfills: Set<string>,
 ): BabelPlugin {
