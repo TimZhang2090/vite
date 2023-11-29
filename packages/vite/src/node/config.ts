@@ -404,6 +404,12 @@ export async function resolveConfig(
   defaultNodeEnv = 'development',
   isPreview = false,
 ): Promise<ResolvedConfig> {
+  // 1. 加载配置文件
+  // 2. 解析用户插件
+  // 3. 加载环境变量
+  // 4. 路径解析器工厂
+  // 5. 生成插件流水线
+
   let config = inlineConfig
   let configFileDependencies: string[] = []
   let mode = inlineConfig.mode || defaultMode
@@ -432,6 +438,7 @@ export async function resolveConfig(
       config.logLevel,
     )
     if (loadResult) {
+      // tim 将命令行中的配置与文件中的配置合并
       config = mergeConfig(loadResult.config, config)
       configFile = loadResult.path
       configFileDependencies = loadResult.dependencies
@@ -454,6 +461,7 @@ export async function resolveConfig(
     }
   }
 
+  // tim 解析插件
   // resolve plugins
   const rawUserPlugins = (
     (await asyncFlatten(config.plugins || [])) as Plugin[]
@@ -591,8 +599,8 @@ export async function resolveConfig(
     config.cacheDir
       ? path.resolve(resolvedRoot, config.cacheDir)
       : pkgDir
-      ? path.join(pkgDir, `node_modules/.vite`)
-      : path.join(resolvedRoot, `.vite`),
+        ? path.join(pkgDir, `node_modules/.vite`)
+        : path.join(resolvedRoot, `.vite`),
   )
 
   const assetsFilter =
@@ -601,11 +609,15 @@ export async function resolveConfig(
       ? createFilter(config.assetsInclude)
       : () => false
 
+  // tim 定义路径解析器
+  // 这个解析器未来会在依赖预构建的时候用上
   // create an internal resolver to be used in special scenarios, e.g.
   // optimizer & handling css @imports
   const createResolver: ResolvedConfig['createResolver'] = (options) => {
     let aliasContainer: PluginContainer | undefined
     let resolverContainer: PluginContainer | undefined
+
+    // tim 返回的函数可以理解为一个解析器
     return async (id, importer, aliasOnly, ssr) => {
       let container: PluginContainer
       if (aliasOnly) {
@@ -647,6 +659,7 @@ export async function resolveConfig(
   }
 
   const { publicDir } = config
+  // tim Vite 作为静态资源服务的目录
   const resolvedPublicDir =
     publicDir !== false && publicDir !== ''
       ? path.resolve(
@@ -795,6 +808,8 @@ export async function resolveConfig(
     ...config,
     ...resolved,
   }
+
+  // tim 5. 生成插件流水线
   ;(resolved.plugins as Plugin[]) = await resolvePlugins(
     resolved,
     prePlugins,
@@ -972,6 +987,7 @@ export async function loadConfigFromFile(
   const isESM = isFilePathESM(resolvedPath)
 
   try {
+    // tim 对配置文件中的代码进行打包，调用 esbuild 的 build API
     const bundled = await bundleConfigFile(resolvedPath, isESM)
     const userConfig = await loadConfigFromBundledFile(
       resolvedPath,
@@ -1164,9 +1180,12 @@ async function loadConfigFromBundledFile(
   // with --experimental-loader themselves, we have to do a hack here:
   // write it to disk, load it with native Node ESM, then delete the file.
   if (isESM) {
+    // tim 加时间戳 timestamp 为了让 dev server 重启后仍然读取最新的配置，避免缓存
     const fileBase = `${fileName}.timestamp-${Date.now()}-${Math.random()
       .toString(16)
       .slice(2)}`
+
+    // tim 生成临时文件，读他，再删掉
     const fileNameTmp = `${fileBase}.mjs`
     const fileUrl = `${pathToFileURL(fileBase)}.mjs`
     await fsp.writeFile(fileNameTmp, bundledCode)
@@ -1177,6 +1196,7 @@ async function loadConfigFromBundledFile(
     }
   }
   // for cjs, we can register a custom loader via `_require.extensions`
+  // tim 大体的思路是通过拦截原生 require.extensions 的加载函数来实现对 bundle 后配置代码的加载
   else {
     const extension = path.extname(fileName)
     // We don't use fsp.realpath() here because it has the same behaviour as
@@ -1185,9 +1205,13 @@ async function loadConfigFromBundledFile(
     // See https://github.com/vitejs/vite/issues/12923
     const realFileName = await promisifiedRealpath(fileName)
     const loaderExt = extension in _require.extensions ? extension : '.js'
+
+    // tim 缓存原生 loader
     const defaultLoader = _require.extensions[loaderExt]!
+    // tim 拦截原生 require 对于`.js`或者`.ts`的加载
     _require.extensions[loaderExt] = (module: NodeModule, filename: string) => {
       if (filename === realFileName) {
+        // tim 用 module._compile 相当于手动编译一个模块, nodejs 内部方法
         ;(module as NodeModuleWithCompile)._compile(bundledCode, filename)
       } else {
         defaultLoader(module, filename)
@@ -1195,7 +1219,10 @@ async function loadConfigFromBundledFile(
     }
     // clear cache in case of server restart
     delete _require.cache[_require.resolve(fileName)]
+    // tim 进行一次手动的 require
     const raw = _require(fileName)
+
+    // tim 恢复原生的加载方法
     _require.extensions[loaderExt] = defaultLoader
     return raw.__esModule ? raw.default : raw
   }
