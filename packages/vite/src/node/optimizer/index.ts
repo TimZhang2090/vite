@@ -254,6 +254,7 @@ export async function optimizeDeps(
 
   const result = await runOptimizeDeps(config, depsInfo).result
 
+  // tim 写入 _metadata.json
   await result.commit()
 
   return result.metadata
@@ -315,6 +316,7 @@ export function initDepsOptimizerMetadata(
   ssr: boolean,
   timestamp?: string,
 ): DepOptimizationMetadata {
+  // tim 根据当前的配置计算出哈希值
   const hash = getDepHash(config, ssr)
   return {
     hash,

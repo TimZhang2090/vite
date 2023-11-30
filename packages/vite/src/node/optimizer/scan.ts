@@ -219,6 +219,7 @@ async function prepareEsbuildScanner(
 
   return await esbuild.context({
     absWorkingDir: process.cwd(),
+    // tim 不写入磁盘，返回内存中
     write: false,
     stdin: {
       contents: entries.map((e) => `import ${JSON.stringify(e)}`).join('\n'),
