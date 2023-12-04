@@ -527,6 +527,8 @@ export function runOptimizeDeps(
       // Rewire the file paths from the temporal processing dir to the final deps cache dir
       const dataPath = path.join(processingCacheDir, '_metadata.json')
       debug?.(colors.green(`creating _metadata.json in ${processingCacheDir}`))
+
+      // tim 生成 _metadata.json 文件
       fs.writeFileSync(
         dataPath,
         stringifyDepsOptimizerMetadata(metadata, depsCacheDir),
@@ -611,6 +613,10 @@ export function runOptimizeDeps(
     return context
       .rebuild()
       .then((result) => {
+        // tim-core esbuild 执行完了，依赖预构建的结果在 result 中
+        // 现在需要把记录到合适的地方(比如 _metadata.json 的 optimized 字段)，还要做好缓存等
+
+        // tim metafile 主要有 inputs 和 outputs 两个字段
         const meta = result.metafile!
 
         // the paths in `meta.outputs` are relative to `process.cwd()`
@@ -620,6 +626,7 @@ export function runOptimizeDeps(
         )
 
         for (const id in depsInfo) {
+          // tim 根据 依赖ID 拿到一个依赖的 编译结果
           const output = esbuildOutputFromId(
             meta.outputs,
             id,
@@ -627,6 +634,8 @@ export function runOptimizeDeps(
           )
 
           const { exportsData, ...info } = depsInfo[id]
+
+          // tim-core 给 _metadata.json 写 optimized 属性
           addOptimizedDepInfo(metadata, 'optimized', {
             ...info,
             // We only need to hash the output.imports in to check for stability, but adding the hash
