@@ -369,6 +369,7 @@ export async function loadCachedDepOptimizationMetadata(
         depsCacheDir,
       )
     } catch (e) {}
+    // tim 找到缓存还不够，还要 哈希 相同，才命中缓存
     // hash is consistent, no need to re-bundle
     if (cachedMetadata && cachedMetadata.hash === getDepHash(config, ssr)) {
       log?.('Hash is consistent. Skipping. Use --force to override.')
@@ -614,7 +615,7 @@ export function runOptimizeDeps(
       .rebuild()
       .then((result) => {
         // tim-core esbuild 执行完了，依赖预构建的结果在 result 中
-        // 现在需要把记录到合适的地方(比如 _metadata.json 的 optimized 字段)，还要做好缓存等
+        // 现在需要把结果记录到合适的地方(比如 _metadata.json 的 optimized 字段)，还要做好缓存等
 
         // tim metafile 主要有 inputs 和 outputs 两个字段
         const meta = result.metafile!

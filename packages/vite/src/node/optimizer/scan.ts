@@ -98,6 +98,7 @@ export function scanImports(config: ResolvedConfig): {
     return prepareEsbuildScanner(config, entries, deps, missing, scanContext)
   })
 
+  // tim 运行 esbuild 进行依赖扫描
   const result = esbuildContext
     .then((context) => {
       function disposeContext() {
@@ -173,8 +174,11 @@ async function computeEntries(config: ResolvedConfig) {
   const buildInput = config.build.rollupOptions?.input
 
   if (explicitEntryPatterns) {
+    // tim 先从 optimizeDeps.entries 找入口
+    // 通过 fast-glob 库来从项目根目录扫描文件
     entries = await globEntries(explicitEntryPatterns, config)
   } else if (buildInput) {
+    // tim build.rollupOptions?.input 配置
     const resolvePath = (p: string) => path.resolve(config.root, p)
     if (typeof buildInput === 'string') {
       entries = [resolvePath(buildInput)]
@@ -378,6 +382,9 @@ function esbuildScanPlugin(
         }
       })
 
+      // tim 解析出 类html 文件中的 script 标签，如：
+      // <script type="module" src="/src/main.ts"></script>  变成  import '/src/main.ts'
+      // 或 <script> 标签中有内容的，直接提取出来
       const htmlTypeOnLoadCallback: (
         args: OnLoadArgs,
       ) => Promise<OnLoadResult | null | undefined> = async ({ path: p }) => {
