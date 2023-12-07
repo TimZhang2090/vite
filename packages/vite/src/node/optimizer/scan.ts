@@ -348,6 +348,7 @@ function esbuildScanPlugin(
       // data urls
       build.onResolve({ filter: dataUrlRE }, ({ path }) => ({
         path,
+        // tim 对于“资源型”路径，直接标记 external: true，不让 esbuild 继续处理
         external: true,
       }))
 
@@ -521,22 +522,27 @@ function esbuildScanPlugin(
           if (depImports[id]) {
             return externalUnlessEntry({ path: id })
           }
+
+          // tim 调用 PluginContainer 的 resolveId
           const resolved = await resolve(id, importer, {
             custom: {
               depScan: { loader: pluginData?.htmlType?.loader },
             },
           })
           if (resolved) {
+            // tim 用于判断哪些路径可以不处理，比如 import 的是 虚拟模块
             if (shouldExternalizeDep(resolved, id)) {
               return externalUnlessEntry({ path: id })
             }
             if (isInNodeModules(resolved) || include?.includes(id)) {
               // dependency or forced included, externalize and stop crawling
               if (isOptimizable(resolved, config.optimizeDeps)) {
+                // tim 正式记录依赖了
                 depImports[id] = resolved
               }
               return externalUnlessEntry({ path: id })
             } else if (isScannable(resolved, config.optimizeDeps.extensions)) {
+              // tim  resolved 为 「类 html」 文件，则标记上 'html' 的 namespace
               const namespace = htmlTypesRE.test(resolved) ? 'html' : undefined
               // linked package, keep crawling
               return {
@@ -547,6 +553,7 @@ function esbuildScanPlugin(
               return externalUnlessEntry({ path: id })
             }
           } else {
+            // tim 没有解析到路径，记录到 missing 表中，后续会检测这张表，显示相关路径未找到的报错
             missing[id] = normalizePath(importer)
           }
         },
@@ -667,6 +674,7 @@ function extractImportPaths(code: string) {
 }
 
 function shouldExternalizeDep(resolvedId: string, rawId: string): boolean {
+  // tim 解析之后不是一个绝对路径，那就不要在 esbuild 中进行加载了
   // not a valid file path
   if (!path.isAbsolute(resolvedId)) {
     return true
