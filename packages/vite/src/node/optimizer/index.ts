@@ -166,11 +166,6 @@ export interface DepOptimizationResult {
   cancel: () => void
 }
 
-export interface DepOptimizationProcessing {
-  promise: Promise<void>
-  resolve: () => void
-}
-
 export interface OptimizedDepInfo {
   id: string
   file: string
@@ -660,7 +655,7 @@ export function runOptimizeDeps(
         }
 
         for (const o of Object.keys(meta.outputs)) {
-          if (!o.match(jsMapExtensionRE)) {
+          if (!jsMapExtensionRE.test(o)) {
             const id = path
               .relative(processingCacheDirOutputPath, o)
               .replace(jsExtensionRE, '')
@@ -896,14 +891,6 @@ export async function addManuallyIncludedOptimizeDeps(
       }
     }
   }
-}
-
-export function newDepOptimizationProcessing(): DepOptimizationProcessing {
-  let resolve: () => void
-  const promise = new Promise((_resolve) => {
-    resolve = _resolve
-  }) as Promise<void>
-  return { promise, resolve: resolve! }
 }
 
 // Convert to { id: src }

@@ -1,3 +1,46 @@
+## <small>5.0.5 (2023-12-04)</small>
+
+* fix: emit `vite:preloadError` for chunks without deps (#15203) ([d8001c5](https://github.com/vitejs/vite/commit/d8001c5)), closes [#15203](https://github.com/vitejs/vite/issues/15203)
+* fix: esbuild glob import resolve error (#15140) ([676804d](https://github.com/vitejs/vite/commit/676804d)), closes [#15140](https://github.com/vitejs/vite/issues/15140)
+* fix: json error with position (#15225) ([14be75f](https://github.com/vitejs/vite/commit/14be75f)), closes [#15225](https://github.com/vitejs/vite/issues/15225)
+* fix: proxy html path should be encoded (#15223) ([5b85040](https://github.com/vitejs/vite/commit/5b85040)), closes [#15223](https://github.com/vitejs/vite/issues/15223)
+* fix(deps): update all non-major dependencies (#15233) ([ad3adda](https://github.com/vitejs/vite/commit/ad3adda)), closes [#15233](https://github.com/vitejs/vite/issues/15233)
+* fix(hmr): don't consider CSS dep as a circular dep (#15229) ([5f2cdec](https://github.com/vitejs/vite/commit/5f2cdec)), closes [#15229](https://github.com/vitejs/vite/issues/15229)
+* feat: add '*.mov' to client.d.ts (#15189) ([d93a211](https://github.com/vitejs/vite/commit/d93a211)), closes [#15189](https://github.com/vitejs/vite/issues/15189)
+* feat(server): allow disabling built-in shortcuts (#15218) ([7fd7c6c](https://github.com/vitejs/vite/commit/7fd7c6c)), closes [#15218](https://github.com/vitejs/vite/issues/15218)
+* chore: replace 'some' with 'includes' in resolveEnvPrefix (#15220) ([ee12f30](https://github.com/vitejs/vite/commit/ee12f30)), closes [#15220](https://github.com/vitejs/vite/issues/15220)
+* chore: update the website url for homepage in package.json (#15181) ([282bd8f](https://github.com/vitejs/vite/commit/282bd8f)), closes [#15181](https://github.com/vitejs/vite/issues/15181)
+* chore: update vitest to 1.0.0-beta.6 (#15194) ([2fce647](https://github.com/vitejs/vite/commit/2fce647)), closes [#15194](https://github.com/vitejs/vite/issues/15194)
+* refactor: make HMR agnostic to environment (#15179) ([0571b7c](https://github.com/vitejs/vite/commit/0571b7c)), closes [#15179](https://github.com/vitejs/vite/issues/15179)
+* refactor: use dedicated regex methods (#15228) ([0348137](https://github.com/vitejs/vite/commit/0348137)), closes [#15228](https://github.com/vitejs/vite/issues/15228)
+* perf: remove debug only prettifyUrl call (#15204) ([73e971f](https://github.com/vitejs/vite/commit/73e971f)), closes [#15204](https://github.com/vitejs/vite/issues/15204)
+* perf: skip computing sourceRoot in injectSourcesContent (#15207) ([1df1fd1](https://github.com/vitejs/vite/commit/1df1fd1)), closes [#15207](https://github.com/vitejs/vite/issues/15207)
+
+
+
+## <small>5.0.4 (2023-11-29)</small>
+
+* fix: bindCLIShortcuts to proper server (#15162) ([67ac572](https://github.com/vitejs/vite/commit/67ac572)), closes [#15162](https://github.com/vitejs/vite/issues/15162)
+* fix: revert "fix: js fallback sourcemap content should be using original content (#15135)" (#15178) ([d2a2493](https://github.com/vitejs/vite/commit/d2a2493)), closes [#15135](https://github.com/vitejs/vite/issues/15135) [#15178](https://github.com/vitejs/vite/issues/15178)
+* fix(define): allow define process.env (#15173) ([ec401da](https://github.com/vitejs/vite/commit/ec401da)), closes [#15173](https://github.com/vitejs/vite/issues/15173)
+* fix(resolve): respect order of browser in mainFields when resolving (#15137) ([4a111aa](https://github.com/vitejs/vite/commit/4a111aa)), closes [#15137](https://github.com/vitejs/vite/issues/15137)
+* feat: preserve vite.middlewares connect instance after restarts (#15166) ([9474c4b](https://github.com/vitejs/vite/commit/9474c4b)), closes [#15166](https://github.com/vitejs/vite/issues/15166)
+* refactor: align with Promise.withResolvers() (#15171) ([642f9bc](https://github.com/vitejs/vite/commit/642f9bc)), closes [#15171](https://github.com/vitejs/vite/issues/15171)
+
+
+
+## <small>5.0.3 (2023-11-28)</small>
+
+* fix: `generateCodeFrame` infinite loop (#15093) ([6619de7](https://github.com/vitejs/vite/commit/6619de7)), closes [#15093](https://github.com/vitejs/vite/issues/15093)
+* fix: js fallback sourcemap content should be using original content (#15135) ([227d56d](https://github.com/vitejs/vite/commit/227d56d)), closes [#15135](https://github.com/vitejs/vite/issues/15135)
+* fix(css): render correct asset url when CSS chunk name is nested (#15154) ([ef403c0](https://github.com/vitejs/vite/commit/ef403c0)), closes [#15154](https://github.com/vitejs/vite/issues/15154)
+* fix(css): use non-nested chunk name if facadeModule is not CSS file (#15155) ([811e392](https://github.com/vitejs/vite/commit/811e392)), closes [#15155](https://github.com/vitejs/vite/issues/15155)
+* fix(dev): bind plugin context functions (#14569) ([cb3243c](https://github.com/vitejs/vite/commit/cb3243c)), closes [#14569](https://github.com/vitejs/vite/issues/14569)
+* chore(deps): update all non-major dependencies (#15145) ([7ff2c0a](https://github.com/vitejs/vite/commit/7ff2c0a)), closes [#15145](https://github.com/vitejs/vite/issues/15145)
+* build: handle latest json-stable-stringify replacement (#15049) ([bcc4a61](https://github.com/vitejs/vite/commit/bcc4a61)), closes [#15049](https://github.com/vitejs/vite/issues/15049)
+
+
+
 ## <small>5.0.2 (2023-11-21)</small>
 
 * fix: make htmlFallback more permissive (#15059) ([6fcceeb](https://github.com/vitejs/vite/commit/6fcceeb)), closes [#15059](https://github.com/vitejs/vite/issues/15059)
