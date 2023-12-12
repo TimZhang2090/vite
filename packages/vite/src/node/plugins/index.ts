@@ -56,6 +56,13 @@ export async function resolvePlugins(
       customResolver: viteAliasCustomResolver,
     }),
     ...prePlugins,
+
+    // tim 由于部分支持原生 ESM 的浏览器并不支持 module preload
+    // 因此某些情况下需要注入相应的 polyfill 进行降级。
+    // <link rel="modulepreload"> 支持的浏览器遇到该标签就会预先 fetch parse and compile
+    // 有些不支持所以就需要注入 polyfill, polyfill 的原理是：
+    // 扫描出当前所有的 modulepreload 标签，拿到 link 标签对应的地址，通过执行fetch 实现预加载；
+    // 同时通过 MutationObserver 监听 DOM 的变化，一旦发现包含 modulepreload 属性的 link 标签，则同样通过 fetch 请求实现预加载。
     modulePreload !== false && modulePreload.polyfill
       ? modulePreloadPolyfillPlugin(config)
       : null,
@@ -74,7 +81,14 @@ export async function resolvePlugins(
           : undefined,
     }),
     htmlInlineProxyPlugin(config),
+    // tim CSS 编译插件，主要功能
+    // CSS预处理器的编译
+    // CSSModules
+    // Postcss编译
+    // 通过 @import 记录依赖，便于 HMR
     cssPlugin(config),
+    // tim Esbuild 转译插件
+    // 代替了 babel 和 TSC 的功能，vite 开发阶段性能强悍的一个原因
     config.esbuild !== false ? esbuildPlugin(config) : null,
     jsonPlugin(
       {
@@ -87,6 +101,7 @@ export async function resolvePlugins(
     webWorkerPlugin(config),
     assetPlugin(config),
     ...normalPlugins,
+
     wasmFallbackPlugin(),
     definePlugin(config),
     cssPostPlugin(config),
@@ -97,6 +112,7 @@ export async function resolvePlugins(
     dynamicImportVarsPlugin(config),
     importGlobPlugin(config),
     ...postPlugins,
+
     ...buildPlugins.post,
     // internal server-only plugins are always applied after everything else
     ...(isBuild

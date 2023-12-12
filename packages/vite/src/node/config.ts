@@ -408,7 +408,7 @@ export async function resolveConfig(
   // 2. 解析用户插件
   // 3. 加载环境变量
   // 4. 路径解析器工厂
-  // 5. 生成插件流水线
+  // 5. 生成插件流水线，合并内置插件
 
   let config = inlineConfig
   let configFileDependencies: string[] = []
@@ -809,7 +809,7 @@ export async function resolveConfig(
     ...resolved,
   }
 
-  // tim 5. 生成插件流水线
+  // tim 5. 生成插件流水线，用户配置的再合并上 vite 内置的各种插件
   ;(resolved.plugins as Plugin[]) = await resolvePlugins(
     resolved,
     prePlugins,

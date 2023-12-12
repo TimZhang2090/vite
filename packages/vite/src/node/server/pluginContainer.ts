@@ -150,7 +150,7 @@ type PluginContext = Omit<
   'cache'
 >
 
-// tim: 大体逻辑就是，当 Vite 构建到某一时机的时候，会调用 container 中的函数，函数内遍历并执行所有插件的对应钩子函数
+// tim: 大体逻辑就是，当 Vite 构建到某一时机的时候，会调用 container 的"钩子调度函数"，函数内遍历并执行所有插件的对应钩子函数
 // 这些钩子的执行时机如下:
 //   在服务器启动时被调用：
 //     options
@@ -667,7 +667,7 @@ export async function createPluginContainer(
 
     getModuleInfo,
 
-    // tim: 在调用 httpServer.listen 方法时触发这个钩子函数
+    // tim: 在调用 httpServer.listen 方法时触发这个钩子函数调度函数
     async buildStart() {
       await handleHookPromise(
         hookParallel(
@@ -771,12 +771,16 @@ export async function createPluginContainer(
       return null
     },
 
-    // tim: 假设请求文件是main.ts
+    // tim: 假设请求文件是 main.ts
     // 当调用 pluginContainer.transform 时
     // 其中会调用 esbuildPlugin 中的 transform 钩子函数，去转换代码
     async transform(code, id, options) {
       const inMap = options?.inMap
       const ssr = options?.ssr
+
+      // tim transform 有一个和 Sourcemap 相关的增强版的 ctx
+      // 增加了 sourcemap 合并的功能，将不同插件的 transform 钩子执行后返回的 sourcemap 进行合并，
+      // 以保证 sourcemap 的准确性和完整性。
       const ctx = new TransformContext(id, code, inMap as SourceMap)
       ctx.ssr = !!ssr
       for (const plugin of getSortedPlugins('transform')) {
