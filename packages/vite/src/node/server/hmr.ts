@@ -56,6 +56,10 @@ export async function handleHMRUpdate(
   server: ViteDevServer,
   configOnly: boolean,
 ): Promise<void> {
+  // 1. 配置文件/环境变量声明文件变化，直接重启服务
+  // 2. 客户端注入的文件(vite/dist/client/client.ts)更改, 开发 vite 时，修改 client 文件，需要刷新页面
+  // 3. 普通文件变动
+
   const { ws, config, moduleGraph } = server
   const shortFile = getShortName(file, config.root)
   const fileName = path.basename(file)
@@ -69,7 +73,7 @@ export async function handleHMRUpdate(
     config.inlineConfig.envFile !== false &&
     getEnvFilesForMode(config.mode).includes(fileName)
 
-  // tim: 配置文件、环境文件修改则自动重启服务
+  // tim: 1. 配置文件、环境文件修改则自动重启服务
   if (isConfig || isConfigDependency || isEnv) {
     // auto restart server
     debugHmr?.(`[config change] ${colors.dim(shortFile)}`)
@@ -93,6 +97,7 @@ export async function handleHMRUpdate(
 
   debugHmr?.(`[file change] ${colors.dim(shortFile)}`)
 
+  // 2. 客户端注入的文件(vite/dist/client/client.ts)更改, 开发 vite 时，修改 client 文件，需要刷新页面
   // (dev only) the client itself cannot be hot updated.
   if (file.startsWith(withTrailingSlash(normalizedClientDir))) {
     ws.send({
@@ -102,10 +107,13 @@ export async function handleHMRUpdate(
     return
   }
 
+  // 3. 普通文件变动
+  // 获取当前发生更新的模块的信息，其中涵盖了其父模块信息
   const mods = moduleGraph.getModulesByFile(file)
 
   // check if any plugin wants to perform custom HMR handling
   const timestamp = Date.now()
+  // tim 初始化 HMR 上下文对象
   const hmrContext: HmrContext = {
     file,
     timestamp,
@@ -114,6 +122,7 @@ export async function handleHMRUpdate(
     server,
   }
 
+  // tim 依次执行插件的 handleHotUpdate 钩子，拿到插件处理后的 HMR 模块
   for (const hook of config.getSortedPluginHooks('handleHotUpdate')) {
     const filteredModules = await hook(hmrContext)
     if (filteredModules) {
@@ -145,7 +154,7 @@ export async function handleHMRUpdate(
   updateModules(shortFile, hmrContext.modules, timestamp, server)
 }
 
-// tim: .vue 等文件更新时，都会进入 updateModules 方法，正常情况下只会触发 update，实现热更新，热替换；
+// tim: .vue 等文件更新时，都会进入 updateModules 方法，正常情况下只会触发 update 事件，实现热更新，热替换；
 type HasDeadEnd = boolean | string
 export function updateModules(
   file: string,
@@ -159,8 +168,11 @@ export function updateModules(
   const traversedModules = new Set<ModuleNode>()
   let needFullReload: HasDeadEnd = false
 
+  // tim 一个文件，可能可以拆分出多个模块, .vue 单文件
   for (const mod of modules) {
     const boundaries: { boundary: ModuleNode; acceptedVia: ModuleNode }[] = []
+
+    // tim 去找出当前 变化模块 的 边界模块，记录在 boundaries 上
     const hasDeadEnd = propagateUpdate(mod, traversedModules, boundaries)
 
     moduleGraph.invalidateModule(mod, invalidatedModules, timestamp, true)
@@ -174,6 +186,8 @@ export function updateModules(
       continue
     }
 
+    // 注入客户端中的的代码，socket 事件的 handleMessage 'update' case 接受的就是这个对象
+    // client.ts 中代码
     updates.push(
       ...boundaries.map(({ boundary, acceptedVia }) => ({
         type: `${boundary.type}-update` as const,
@@ -282,6 +296,7 @@ function propagateUpdate(
   }
 
   if (node.isSelfAccepting) {
+    // tim 接受自身模块的更新
     boundaries.push({ boundary: node, acceptedVia: node })
     const result = isNodeWithinCircularImports(node, currentChain)
     if (result) return result
@@ -308,6 +323,7 @@ function propagateUpdate(
   // Also, the imported module (this one) must be updated before the importers,
   // so that they do get the fresh imported module when/if they are reloaded.
   if (node.acceptedHmrExports) {
+    // tim 接受自身模块的更新
     boundaries.push({ boundary: node, acceptedVia: node })
     const result = isNodeWithinCircularImports(node, currentChain)
     if (result) return result
@@ -327,9 +343,11 @@ function propagateUpdate(
     }
   }
 
+  // tim for 循环所有父模块
   for (const importer of node.importers) {
     const subChain = currentChain.concat(importer)
 
+    // tim 一个父模块，接收了当前模块，父模块就是更新边界
     if (importer.acceptedHmrDeps.has(node)) {
       boundaries.push({ boundary: importer, acceptedVia: node })
       const result = isNodeWithinCircularImports(importer, subChain)
@@ -349,6 +367,7 @@ function propagateUpdate(
 
     if (
       !currentChain.includes(importer) &&
+      // tim 递归向上，寻找热更新边界
       propagateUpdate(importer, traversedModules, boundaries, subChain)
     ) {
       return true

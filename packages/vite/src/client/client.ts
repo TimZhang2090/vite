@@ -134,6 +134,7 @@ const debounceReload = (time: number) => {
 }
 const pageReload = debounceReload(50)
 
+// tim 注意这里第二个参数，提供了一个具体的 fetch 新模块的方法，原生 动态 import 方法
 const hmrClient = new HMRClient(console, async function importUpdatedModule({
   acceptedPath,
   timestamp,
@@ -177,6 +178,7 @@ async function handleMessage(payload: HMRPayload) {
         isFirstUpdate = false
       }
       await Promise.all(
+        // tim 注意 updates 是个数组哦
         payload.updates.map(async (update): Promise<void> => {
           if (update.type === 'js-update') {
             return queueUpdate(hmrClient.fetchUpdate(update))
@@ -311,6 +313,8 @@ async function queueUpdate(p: Promise<(() => void) | undefined>) {
     pending = false
     const loading = [...queued]
     queued = []
+
+    // tim fetchUpdate 返回的 执行所有的更新回调的 函数，在这里被执行
     ;(await Promise.all(loading)).forEach((fn) => fn && fn())
   }
 }

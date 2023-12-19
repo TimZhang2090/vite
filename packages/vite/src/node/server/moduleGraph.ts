@@ -18,12 +18,16 @@ export class ModuleNode {
   /**
    * Resolved file system path + query
    */
+  // 文件绝对路径 + query
   id: string | null = null
+  // 文件绝对路径
   file: string | null = null
   type: 'js' | 'css'
   info?: ModuleInfo
   meta?: Record<string, any>
+  // 父模块
   importers = new Set<ModuleNode>()
+  // 子模块
   clientImportedModules = new Set<ModuleNode>()
   ssrImportedModules = new Set<ModuleNode>()
   acceptedHmrDeps = new Set<ModuleNode>()
@@ -256,11 +260,13 @@ export class ModuleGraph {
       if (typeof imported === 'string') {
         resolvePromises.push(
           this.ensureEntryFromUrl(imported, ssr).then((dep) => {
+            // tim 子模块 把当前模块作为 父模块
             dep.importers.add(mod)
             resolveResults[nextIndex] = dep
           }),
         )
       } else {
+        // tim 子模块 把当前模块作为 父模块
         imported.importers.add(mod)
         resolveResults[nextIndex] = imported
       }
@@ -274,6 +280,7 @@ export class ModuleGraph {
     if (ssr) {
       mod.ssrImportedModules = nextImports
     } else {
+      // tim 当前模块，添加 子模块
       mod.clientImportedModules = nextImports
     }
 
@@ -355,9 +362,12 @@ export class ModuleGraph {
       if (!mod) {
         mod = new ModuleNode(url, setIsSelfAccepting)
         if (meta) mod.meta = meta
+
         this.urlToModuleMap.set(url, mod)
+
         mod.id = resolvedId
         this.idToModuleMap.set(resolvedId, mod)
+
         const file = (mod.file = cleanUrl(resolvedId))
         let fileMappedModules = this.fileToModulesMap.get(file)
         if (!fileMappedModules) {

@@ -59,7 +59,7 @@ export async function resolvePlugins(
 
     // tim 由于部分支持原生 ESM 的浏览器并不支持 module preload
     // 因此某些情况下需要注入相应的 polyfill 进行降级。
-    // <link rel="modulepreload"> 支持的浏览器遇到该标签就会预先 fetch parse and compile
+    // <link rel="modulepreload" href="/assets/vendor.232323.js"> 支持的浏览器遇到该标签就会预先 fetch parse and compile
     // 有些不支持所以就需要注入 polyfill, polyfill 的原理是：
     // 扫描出当前所有的 modulepreload 标签，拿到 link 标签对应的地址，通过执行fetch 实现预加载；
     // 同时通过 MutationObserver 监听 DOM 的变化，一旦发现包含 modulepreload 属性的 link 标签，则同样通过 fetch 请求实现预加载。

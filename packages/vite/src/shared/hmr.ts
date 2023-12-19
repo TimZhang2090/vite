@@ -157,6 +157,8 @@ export class HMRContext implements ViteHotContext {
       deps,
       fn: callback,
     })
+
+    // tim 这个 map 用来存每个模块中所有用 accept 注册的 cb
     this.hmrClient.hotModulesMap.set(this.ownerPath, mod)
   }
 }
@@ -210,6 +212,10 @@ export class HMRClient {
     )
   }
 
+  // tim fetchUpdate 返回的函数执行一次，仅触发一个 `持有模块`(边界模块) 执行一遍更新逻辑
+  // payload.updates 是一个数组，可能包含多个接受 当前变化模块 的 边界模块
+  // 所以当 server 端推动变动模块的信息的时候，如果其有多个上级 边界模块，fetchUpdate 是会被执行多次的
+  // 所以 fetchUpdate 返回的函数又传给了 queueUpdate
   public async fetchUpdate(update: Update): Promise<(() => void) | undefined> {
     const { path, acceptedPath } = update
     const mod = this.hotModulesMap.get(path)
@@ -229,17 +235,22 @@ export class HMRClient {
     )
 
     if (isSelfUpdate || qualifiedCallbacks.length > 0) {
+      // tim 如果模块有通过 hot.dispose() 注册失活回调函数，先执行失活函数
       const disposer = this.disposeMap.get(acceptedPath)
       if (disposer) await disposer(this.dataMap.get(acceptedPath))
+
       try {
+        // tim 请求发生变化的模块
         fetchedModule = await this.importUpdatedModule(update)
       } catch (e) {
         this.warnFailedUpdate(e, acceptedPath)
       }
     }
 
+    // tim 返回一个函数，用来执行所有的更新回调
     return () => {
       for (const { deps, fn } of qualifiedCallbacks) {
+        // tim 执行回调，并传入更新后的模块
         fn(
           deps.map((dep) => (dep === acceptedPath ? fetchedModule : undefined)),
         )

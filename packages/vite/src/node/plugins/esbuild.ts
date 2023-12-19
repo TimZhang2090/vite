@@ -69,7 +69,7 @@ type TSConfigJSON = {
 type TSCompilerOptions = NonNullable<TSConfigJSON['compilerOptions']>
 
 // tim: 此函数先是整合 ESbuild 的配置项
-// 然后通过 ESbuild 的transform 方法将 ts 文件编译成 js 文件
+// 然后通过 ESbuild 的 transform 方法将 ts 文件编译成 js 文件
 // 最后返回编译后代码以及 sourcemap 相关信息
 export async function transformWithEsbuild(
   code: string,

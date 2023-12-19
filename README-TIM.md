@@ -1,5 +1,5 @@
 pnpm run --filter vite dev
-pnpm run --filter @vitejs/test-optimize-deps dev
+pnpm run --filter @vitejs/test-hmr dev
 
 调试步骤：
 
