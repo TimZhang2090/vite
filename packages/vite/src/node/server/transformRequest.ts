@@ -197,6 +197,7 @@ async function loadAndTransform(
 
   // load
   const loadStart = debugLoad ? performance.now() : 0
+  // tim 加载模块
   const loadResult = await pluginContainer.load(id, { ssr })
   if (loadResult == null) {
     // if this is an html request and there is no load result, skip ahead to
@@ -275,6 +276,7 @@ async function loadAndTransform(
 
   if (server._restartPromise && !ssr) throwClosedServerError()
 
+  // tim 确保依赖地图中有这个 url 的模块
   // ensure module in graph after successful load
   mod ??= await moduleGraph._ensureEntryFromUrl(url, ssr, undefined, resolved)
 
@@ -349,6 +351,7 @@ async function loadAndTransform(
     ssr && !server.config.experimental.skipSsrTransform
       ? await server.ssrTransform(code, normalizedMap, url, originalCode)
       : ({
+          // tim 加载的代码被放在这了
           code,
           map: normalizedMap,
           etag: getEtag(code, { weak: true }),
@@ -358,6 +361,7 @@ async function loadAndTransform(
   // being processed, so it is re-processed next time if it is stale
   if (timestamp > mod.lastInvalidationTimestamp) {
     if (ssr) mod.ssrTransformResult = result
+    // tim 模块内容被放置在 transformResult 字段上
     else mod.transformResult = result
   }
 

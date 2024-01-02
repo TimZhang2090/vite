@@ -360,6 +360,7 @@ export class ModuleGraph {
       )
       mod = this.idToModuleMap.get(resolvedId)
       if (!mod) {
+        // tim 新 new 一个
         mod = new ModuleNode(url, setIsSelfAccepting)
         if (meta) mod.meta = meta
 

@@ -212,7 +212,7 @@ export class HMRClient {
     )
   }
 
-  // tim fetchUpdate 返回的函数执行一次，仅触发一个 `持有模块`(边界模块) 执行一遍更新逻辑
+  // tim fetchUpdate 返回的函数执行一次，仅触发一个 `持有模块`(边界模块) 执行一遍更新逻辑(通过 accept 注册的 cb)
   // payload.updates 是一个数组，可能包含多个接受 当前变化模块 的 边界模块
   // 所以当 server 端推动变动模块的信息的时候，如果其有多个上级 边界模块，fetchUpdate 是会被执行多次的
   // 所以 fetchUpdate 返回的函数又传给了 queueUpdate
