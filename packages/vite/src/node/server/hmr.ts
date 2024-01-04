@@ -173,6 +173,9 @@ export function updateModules(
     const boundaries: { boundary: ModuleNode; acceptedVia: ModuleNode }[] = []
 
     // tim 去找出当前 变化模块 的 边界模块，记录在 boundaries 上
+    // When something has a "dead end", that means there's no HMR handlers and it'll do a reload.
+    // no HMR handlers 的意思是，客户的代码中没有调用 import.meta.hot 的逻辑
+    // 并且是 its parent recursively has no import.meta.hot handlers
     const hasDeadEnd = propagateUpdate(mod, traversedModules, boundaries)
 
     moduleGraph.invalidateModule(mod, invalidatedModules, timestamp, true)

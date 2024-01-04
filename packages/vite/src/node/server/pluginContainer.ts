@@ -689,6 +689,8 @@ export async function createPluginContainer(
       const resolveStart = debugResolve ? performance.now() : 0
       let id: string | null = null
       const partial: Partial<PartialResolvedId> = {}
+
+      // tim 取出所有“对应”的插件
       for (const plugin of getSortedPlugins('resolveId')) {
         if (closed && !ssr) throwClosedServerError()
         if (!plugin.resolveId) continue

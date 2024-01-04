@@ -95,8 +95,8 @@ function cleanOptions<Options extends GlobalCLIOptions>(
       sourcemap === 'true'
         ? true
         : sourcemap === 'false'
-        ? false
-        : ret.sourcemap
+          ? false
+          : ret.sourcemap
   }
 
   return ret
@@ -170,6 +170,8 @@ cli
         throw new Error('HTTP server not available')
       }
 
+      // tim 这里的 server 是经过一层包装的 ViteDevServer
+      // 其调用 listen()，内部最终会调用 httpServer.listen()
       await server.listen()
 
       const info = server.config.logger.info
