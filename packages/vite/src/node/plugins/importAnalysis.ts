@@ -232,6 +232,7 @@ export function importAnalysisPlugin(config: ResolvedConfig): Plugin {
       let exports!: readonly ExportSpecifier[]
       source = stripBomTag(source)
       try {
+        // tim 通过 es-module-lexer 获取文件中 import 语句 export 语句信息
         ;[imports, exports] = parseImports(source)
       } catch (_e: unknown) {
         const e = _e as EsModuleLexerParseError
@@ -417,6 +418,7 @@ export function importAnalysisPlugin(config: ResolvedConfig): Plugin {
         imports.length,
       )
 
+      // tim 遍历imports分别处理每个导入
       await Promise.all(
         imports.map(async (importSpecifier, index) => {
           const {
@@ -486,6 +488,7 @@ export function importAnalysisPlugin(config: ResolvedConfig): Plugin {
             str().remove(end + 1, expEnd)
           }
 
+          // tim 如果有模块名，就是普通的 import
           // static import or valid string in dynamic import
           // If resolvable, let's resolve it
           if (specifier) {

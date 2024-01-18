@@ -197,7 +197,7 @@ async function loadAndTransform(
 
   // load
   const loadStart = debugLoad ? performance.now() : 0
-  // tim 加载模块
+  // tim 加载模块，调用所有插件的 load 钩子处理一遍
   const loadResult = await pluginContainer.load(id, { ssr })
   if (loadResult == null) {
     // if this is an html request and there is no load result, skip ahead to
