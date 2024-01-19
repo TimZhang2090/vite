@@ -2,7 +2,7 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import type { Server } from 'node:http'
 import colors from 'picocolors'
-import type { Update } from 'types/hmrPayload'
+import type { CustomPayload, HMRPayload, Update } from 'types/hmrPayload'
 import type { RollupError } from 'rollup'
 import { CLIENT_DIR } from '../constants'
 import {
@@ -12,7 +12,7 @@ import {
   withTrailingSlash,
   wrapId,
 } from '../utils'
-import type { ViteDevServer } from '..'
+import type { InferCustomEventPayload, ViteDevServer } from '..'
 import { isCSSRequest } from '../plugins/css'
 import { getAffectedGlobModules } from '../plugins/importMetaGlob'
 import { isExplicitImportRequired } from '../plugins/importAnalysis'
@@ -35,6 +35,8 @@ export interface HmrOptions {
   timeout?: number
   overlay?: boolean
   server?: Server
+  /** @internal */
+  channels?: HMRChannel[]
 }
 
 export interface HmrContext {
@@ -43,6 +45,74 @@ export interface HmrContext {
   modules: Array<ModuleNode>
   read: () => string | Promise<string>
   server: ViteDevServer
+}
+
+interface PropagationBoundary {
+  boundary: ModuleNode
+  acceptedVia: ModuleNode
+  isWithinCircularImport: boolean
+}
+
+export interface HMRBroadcasterClient {
+  /**
+   * Send event to the client
+   */
+  send(payload: HMRPayload): void
+  /**
+   * Send custom event
+   */
+  send(event: string, payload?: CustomPayload['data']): void
+}
+
+export interface HMRChannel {
+  /**
+   * Unique channel name
+   */
+  name: string
+  /**
+   * Broadcast events to all clients
+   */
+  send(payload: HMRPayload): void
+  /**
+   * Send custom event
+   */
+  send<T extends string>(event: T, payload?: InferCustomEventPayload<T>): void
+  /**
+   * Handle custom event emitted by `import.meta.hot.send`
+   */
+  on<T extends string>(
+    event: T,
+    listener: (
+      data: InferCustomEventPayload<T>,
+      client: HMRBroadcasterClient,
+      ...args: any[]
+    ) => void,
+  ): void
+  on(event: 'connection', listener: () => void): void
+  /**
+   * Unregister event listener
+   */
+  off(event: string, listener: Function): void
+  /**
+   * Start listening for messages
+   */
+  listen(): void
+  /**
+   * Disconnect all clients, called when server is closed or restarted.
+   */
+  close(): void
+}
+
+export interface HMRBroadcaster extends Omit<HMRChannel, 'close' | 'name'> {
+  /**
+   * All registered channels. Always has websocket channel.
+   */
+  readonly channels: HMRChannel[]
+  /**
+   * Add a new third-party channel.
+   */
+  addChannel(connection: HMRChannel): HMRBroadcaster
+  close(): Promise<unknown[]>
 }
 
 export function getShortName(file: string, root: string): string {
@@ -60,9 +130,8 @@ export async function handleHMRUpdate(
   // 2. 客户端注入的文件(vite/dist/client/client.ts)更改, 开发 vite 时，修改 client 文件，需要刷新页面
   // 3. 普通文件变动
 
-  const { ws, config, moduleGraph } = server
+  const { hot, config, moduleGraph } = server
   const shortFile = getShortName(file, config.root)
-  const fileName = path.basename(file)
 
   const isConfig = file === config.configFile
   const isConfigDependency = config.configFileDependencies.some(
@@ -71,7 +140,7 @@ export async function handleHMRUpdate(
 
   const isEnv =
     config.inlineConfig.envFile !== false &&
-    getEnvFilesForMode(config.mode).includes(fileName)
+    getEnvFilesForMode(config.mode, config.envDir).includes(file)
 
   // tim: 1. 配置文件、环境文件修改则自动重启服务
   if (isConfig || isConfigDependency || isEnv) {
@@ -100,7 +169,7 @@ export async function handleHMRUpdate(
   // 2. 客户端注入的文件(vite/dist/client/client.ts)更改, 开发 vite 时，修改 client 文件，需要刷新页面
   // (dev only) the client itself cannot be hot updated.
   if (file.startsWith(withTrailingSlash(normalizedClientDir))) {
-    ws.send({
+    hot.send({
       type: 'full-reload',
       path: '*',
     })
@@ -138,7 +207,7 @@ export async function handleHMRUpdate(
         clear: true,
         timestamp: true,
       })
-      ws.send({
+      hot.send({
         type: 'full-reload',
         path: config.server.middlewareMode
           ? '*'
@@ -155,12 +224,13 @@ export async function handleHMRUpdate(
 }
 
 // tim: .vue 等文件更新时，都会进入 updateModules 方法，正常情况下只会触发 update 事件，实现热更新，热替换；
-type HasDeadEnd = boolean | string
+type HasDeadEnd = boolean
+
 export function updateModules(
   file: string,
   modules: ModuleNode[],
   timestamp: number,
-  { config, ws, moduleGraph }: ViteDevServer,
+  { config, hot, moduleGraph }: ViteDevServer,
   afterInvalidation?: boolean,
 ): void {
   const updates: Update[] = []
@@ -170,7 +240,7 @@ export function updateModules(
 
   // tim 一个文件，可能可以拆分出多个模块, .vue 单文件
   for (const mod of modules) {
-    const boundaries: { boundary: ModuleNode; acceptedVia: ModuleNode }[] = []
+    const boundaries: PropagationBoundary[] = []
 
     // tim 去找出当前 变化模块 的 边界模块，记录在 boundaries 上
     // When something has a "dead end", that means there's no HMR handlers and it'll do a reload.
@@ -192,16 +262,19 @@ export function updateModules(
     // 注入客户端中的的代码，socket 事件的 handleMessage 'update' case 接受的就是这个对象
     // client.ts 中代码
     updates.push(
-      ...boundaries.map(({ boundary, acceptedVia }) => ({
-        type: `${boundary.type}-update` as const,
-        timestamp,
-        path: normalizeHmrUrl(boundary.url),
-        explicitImportRequired:
-          boundary.type === 'js'
-            ? isExplicitImportRequired(acceptedVia.url)
-            : undefined,
-        acceptedPath: normalizeHmrUrl(acceptedVia.url),
-      })),
+      ...boundaries.map(
+        ({ boundary, acceptedVia, isWithinCircularImport }) => ({
+          type: `${boundary.type}-update` as const,
+          timestamp,
+          path: normalizeHmrUrl(boundary.url),
+          acceptedPath: normalizeHmrUrl(acceptedVia.url),
+          explicitImportRequired:
+            boundary.type === 'js'
+              ? isExplicitImportRequired(acceptedVia.url)
+              : false,
+          isWithinCircularImport,
+        }),
+      ),
     )
   }
 
@@ -214,7 +287,7 @@ export function updateModules(
       colors.green(`page reload `) + colors.dim(file) + reason,
       { clear: !afterInvalidation, timestamp: true },
     )
-    ws.send({
+    hot.send({
       type: 'full-reload',
     })
     return
@@ -230,7 +303,7 @@ export function updateModules(
       colors.dim([...new Set(updates.map((u) => u.path))].join(', ')),
     { clear: !afterInvalidation, timestamp: true },
   )
-  ws.send({
+  hot.send({
     type: 'update',
     updates,
   })
@@ -278,7 +351,7 @@ function areAllImportsAccepted(
 function propagateUpdate(
   node: ModuleNode,
   traversedModules: Set<ModuleNode>,
-  boundaries: { boundary: ModuleNode; acceptedVia: ModuleNode }[],
+  boundaries: PropagationBoundary[],
   currentChain: ModuleNode[] = [node],
 ): HasDeadEnd {
   if (traversedModules.has(node)) {
@@ -300,9 +373,11 @@ function propagateUpdate(
 
   if (node.isSelfAccepting) {
     // tim 接受自身模块的更新
-    boundaries.push({ boundary: node, acceptedVia: node })
-    const result = isNodeWithinCircularImports(node, currentChain)
-    if (result) return result
+    boundaries.push({
+      boundary: node,
+      acceptedVia: node,
+      isWithinCircularImport: isNodeWithinCircularImports(node, currentChain),
+    })
 
     // additionally check for CSS importers, since a PostCSS plugin like
     // Tailwind JIT may register any file as a dependency to a CSS file.
@@ -327,9 +402,11 @@ function propagateUpdate(
   // so that they do get the fresh imported module when/if they are reloaded.
   if (node.acceptedHmrExports) {
     // tim 接受自身模块的更新
-    boundaries.push({ boundary: node, acceptedVia: node })
-    const result = isNodeWithinCircularImports(node, currentChain)
-    if (result) return result
+    boundaries.push({
+      boundary: node,
+      acceptedVia: node,
+      isWithinCircularImport: isNodeWithinCircularImports(node, currentChain),
+    })
   } else {
     if (!node.importers.size) {
       return true
@@ -352,9 +429,11 @@ function propagateUpdate(
 
     // tim 一个父模块，接收了当前模块，父模块就是更新边界
     if (importer.acceptedHmrDeps.has(node)) {
-      boundaries.push({ boundary: importer, acceptedVia: node })
-      const result = isNodeWithinCircularImports(importer, subChain)
-      if (result) return result
+      boundaries.push({
+        boundary: importer,
+        acceptedVia: node,
+        isWithinCircularImport: isNodeWithinCircularImports(importer, subChain),
+      })
       continue
     }
 
@@ -394,7 +473,7 @@ function isNodeWithinCircularImports(
   nodeChain: ModuleNode[],
   currentChain: ModuleNode[] = [node],
   traversedModules = new Set<ModuleNode>(),
-): HasDeadEnd {
+): boolean {
   // To help visualize how each parameters work, imagine this import graph:
   //
   // A -> B -> C -> ACCEPTED -> D -> E -> NODE
@@ -445,7 +524,7 @@ function isNodeWithinCircularImports(
             importChain.map((m) => colors.dim(m.url)).join(' -> '),
         )
       }
-      return 'circular imports'
+      return true
     }
 
     // Continue recursively
@@ -464,7 +543,7 @@ function isNodeWithinCircularImports(
 
 export function handlePrunedModules(
   mods: Set<ModuleNode>,
-  { ws }: ViteDevServer,
+  { hot }: ViteDevServer,
 ): void {
   // update the disposed modules' hmr timestamp
   // since if it's re-imported, it should re-apply side effects
@@ -474,7 +553,7 @@ export function handlePrunedModules(
     mod.lastHMRTimestamp = t
     debugHmr?.(`[dispose] ${colors.dim(mod.file)}`)
   })
-  ws.send({
+  hot.send({
     type: 'prune',
     paths: [...mods].map((m) => m.url),
   })
@@ -635,21 +714,66 @@ async function readModifiedFile(file: string): Promise<string> {
   const content = await fsp.readFile(file, 'utf-8')
   if (!content) {
     const mtime = (await fsp.stat(file)).mtimeMs
-    await new Promise((r) => {
-      let n = 0
-      const poll = async () => {
-        n++
-        const newMtime = (await fsp.stat(file)).mtimeMs
-        if (newMtime !== mtime || n > 10) {
-          r(0)
-        } else {
-          setTimeout(poll, 10)
-        }
+
+    for (let n = 0; n < 10; n++) {
+      await new Promise((r) => setTimeout(r, 10))
+      const newMtime = (await fsp.stat(file)).mtimeMs
+      if (newMtime !== mtime) {
+        break
       }
-      setTimeout(poll, 10)
-    })
+    }
+
     return await fsp.readFile(file, 'utf-8')
   } else {
     return content
   }
+}
+
+export function createHMRBroadcaster(): HMRBroadcaster {
+  const channels: HMRChannel[] = []
+  const readyChannels = new WeakSet<HMRChannel>()
+  const broadcaster: HMRBroadcaster = {
+    get channels() {
+      return [...channels]
+    },
+    addChannel(channel) {
+      if (channels.some((c) => c.name === channel.name)) {
+        throw new Error(`HMR channel "${channel.name}" is already defined.`)
+      }
+      channels.push(channel)
+      return broadcaster
+    },
+    on(event: string, listener: (...args: any[]) => any) {
+      // emit connection event only when all channels are ready
+      if (event === 'connection') {
+        // make a copy so we don't wait for channels that might be added after this is triggered
+        const channels = this.channels
+        channels.forEach((channel) =>
+          channel.on('connection', () => {
+            readyChannels.add(channel)
+            if (channels.every((c) => readyChannels.has(c))) {
+              listener()
+            }
+          }),
+        )
+        return
+      }
+      channels.forEach((channel) => channel.on(event, listener))
+      return
+    },
+    off(event, listener) {
+      channels.forEach((channel) => channel.off(event, listener))
+      return
+    },
+    send(...args: any[]) {
+      channels.forEach((channel) => channel.send(...(args as [any])))
+    },
+    listen() {
+      channels.forEach((channel) => channel.listen())
+    },
+    close() {
+      return Promise.all(channels.map((channel) => channel.close()))
+    },
+  }
+  return broadcaster
 }

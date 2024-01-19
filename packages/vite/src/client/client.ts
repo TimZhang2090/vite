@@ -30,7 +30,6 @@ const socketHost = `${__HMR_HOSTNAME__ || importMetaUrl.hostname}:${
 }${__HMR_BASE__}`
 const directSocketHost = __HMR_DIRECT_TARGET__
 const base = __BASE__ || '/'
-const messageBuffer: string[] = []
 
 let socket: WebSocket
 try {
@@ -135,27 +134,45 @@ const debounceReload = (time: number) => {
 const pageReload = debounceReload(50)
 
 // tim 注意这里第二个参数，提供了一个具体的 fetch 新模块的方法，原生 动态 import 方法
-const hmrClient = new HMRClient(console, async function importUpdatedModule({
-  acceptedPath,
-  timestamp,
-  explicitImportRequired,
-}) {
-  const [acceptedPathWithoutQuery, query] = acceptedPath.split(`?`)
-  return await import(
-    /* @vite-ignore */
-    base +
-      acceptedPathWithoutQuery.slice(1) +
-      `?${explicitImportRequired ? 'import&' : ''}t=${timestamp}${
-        query ? `&${query}` : ''
-      }`
-  )
-})
+const hmrClient = new HMRClient(
+  console,
+  {
+    isReady: () => socket && socket.readyState === 1,
+    send: (message) => socket.send(message),
+  },
+  async function importUpdatedModule({
+    acceptedPath,
+    timestamp,
+    explicitImportRequired,
+    isWithinCircularImport,
+  }) {
+    const [acceptedPathWithoutQuery, query] = acceptedPath.split(`?`)
+    const importPromise = import(
+      /* @vite-ignore */
+      base +
+        acceptedPathWithoutQuery.slice(1) +
+        `?${explicitImportRequired ? 'import&' : ''}t=${timestamp}${
+          query ? `&${query}` : ''
+        }`
+    )
+    if (isWithinCircularImport) {
+      importPromise.catch(() => {
+        console.info(
+          `[hmr] ${acceptedPath} failed to apply HMR as it's within a circular import. Reloading page to reset the execution order. ` +
+            `To debug and break the circular import, you can run \`vite --debug hmr\` to log the circular dependency path if a file change triggered it.`,
+        )
+        pageReload()
+      })
+    }
+    return await importPromise
+  },
+)
 
 async function handleMessage(payload: HMRPayload) {
   switch (payload.type) {
     case 'connected':
       console.debug(`[vite] connected.`)
-      sendMessageBuffer()
+      hmrClient.messenger.flush()
       // proxy(nginx, docker) hmr ws maybe caused timeout,
       // so send ping package let ws keep alive.
       setInterval(() => {
@@ -181,7 +198,7 @@ async function handleMessage(payload: HMRPayload) {
         // tim 注意 updates 是个数组哦
         payload.updates.map(async (update): Promise<void> => {
           if (update.type === 'js-update') {
-            return queueUpdate(hmrClient.fetchUpdate(update))
+            return hmrClient.queueUpdate(update)
           }
 
           // css-update
@@ -297,28 +314,6 @@ function hasErrorOverlay() {
   return document.querySelectorAll(overlayId).length
 }
 
-let pending = false
-let queued: Promise<(() => void) | undefined>[] = []
-
-/**
- * buffer multiple hot updates triggered by the same src change
- * so that they are invoked in the same order they were sent.
- * (otherwise the order may be inconsistent because of the http request round trip)
- */
-async function queueUpdate(p: Promise<(() => void) | undefined>) {
-  queued.push(p)
-  if (!pending) {
-    pending = true
-    await Promise.resolve()
-    pending = false
-    const loading = [...queued]
-    queued = []
-
-    // tim fetchUpdate 返回的 执行所有的更新回调的 函数，在这里被执行
-    ;(await Promise.all(loading)).forEach((fn) => fn && fn())
-  }
-}
-
 async function waitForSuccessfulPing(
   socketProtocol: string,
   hostAndPath: string,
@@ -428,22 +423,8 @@ export function removeStyle(id: string): void {
   }
 }
 
-function sendMessageBuffer() {
-  if (socket.readyState === 1) {
-    messageBuffer.forEach((msg) => socket.send(msg))
-    messageBuffer.length = 0
-  }
-}
-
 export function createHotContext(ownerPath: string): ViteHotContext {
-  return new HMRContext(ownerPath, hmrClient, {
-    addBuffer(message) {
-      messageBuffer.push(message)
-    },
-    send() {
-      sendMessageBuffer()
-    },
-  })
+  return new HMRContext(hmrClient, ownerPath)
 }
 
 /**

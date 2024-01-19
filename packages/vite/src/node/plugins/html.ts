@@ -45,10 +45,12 @@ interface ScriptAssetsUrl {
 
 const htmlProxyRE =
   /\?html-proxy=?(?:&inline-css)?(?:&style-attr)?&index=(\d+)\.(js|css)$/
+const isHtmlProxyRE = /\?html-proxy\b/
+
 const inlineCSSRE = /__VITE_INLINE_CSS__([a-z\d]{8}_\d+)__/g
 // Do not allow preceding '.', but do allow preceding '...' for spread operations
 const inlineImportRE =
-  // eslint-disable-next-line regexp/no-unused-capturing-group
+   
   /(?<!(?<!\.\.)\.)\bimport\s*\(("(?:[^"]|(?<=\\)")*"|'(?:[^']|(?<=\\)')*')\)/dg
 const htmlLangRE = /\.(?:html|htm)$/
 const spaceRe = /[\t\n\f\r ]/
@@ -64,7 +66,7 @@ const importMapAppendRE = new RegExp(
   'i',
 )
 
-export const isHTMLProxy = (id: string): boolean => htmlProxyRE.test(id)
+export const isHTMLProxy = (id: string): boolean => isHtmlProxyRE.test(id)
 
 export const isHTMLRequest = (request: string): boolean =>
   htmlLangRE.test(request)
@@ -89,7 +91,7 @@ export function htmlInlineProxyPlugin(config: ResolvedConfig): Plugin {
     name: 'vite:html-inline-proxy',
 
     resolveId(id) {
-      if (htmlProxyRE.test(id)) {
+      if (isHTMLProxy(id)) {
         return id
       }
     },
@@ -323,10 +325,8 @@ export function buildHtmlPlugin(config: ResolvedConfig): Plugin {
 
     async transform(html, id) {
       if (id.endsWith('.html')) {
-        const relativeUrlPath = path.posix.relative(
-          config.root,
-          normalizePath(id),
-        )
+        id = normalizePath(id)
+        const relativeUrlPath = path.posix.relative(config.root, id)
         const publicPath = `/${relativeUrlPath}`
         const publicBase = getBaseInHTML(relativeUrlPath, config)
 
